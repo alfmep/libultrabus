@@ -43,7 +43,7 @@ namespace ultrabus {
           private_connection {false},
           ioh (new iomultiplex::default_iohandler(SIGRTMIN)),
           internal_io_handler {true},
-          io_timers (new iomultiplex::TimerSet(*ioh))
+          io_timers (new iomultiplex::timer_set(*ioh))
     {
         dbus_threads_init_default ();
     }
@@ -56,7 +56,7 @@ namespace ultrabus {
           private_connection {false},
           ioh (&io_handler),
           internal_io_handler {false},
-          io_timers (new iomultiplex::TimerSet(*ioh))
+          io_timers (new iomultiplex::timer_set(*ioh))
     {
         dbus_threads_init_default ();
     }
@@ -253,7 +253,7 @@ namespace ultrabus {
             pending_messages.emplace (pending, reply_cb);
             dbus_pending_call_set_notify (pending, dbus_pending_msg_cb, this, nullptr);
         }else{
-            io_timers->set (0, [this, msg, reply_cb, timeout](iomultiplex::TimerSet& ts,
+            io_timers->set (0, [this, msg, reply_cb, timeout](iomultiplex::timer_set& ts,
                                                               long timer_id)
                 {
                     bool result;
@@ -471,8 +471,8 @@ namespace ultrabus {
 
         auto entry = self->io_watches.find (watch);
         if (entry == self->io_watches.end())
-            entry = self->io_watches.emplace(watch, iomultiplex::FdConnection(*self->ioh, fd, true)).first;
-        iomultiplex::FdConnection& fdc = entry->second;
+            entry = self->io_watches.emplace(watch, iomultiplex::fd_connection(*self->ioh, fd, true)).first;
+        iomultiplex::fd_connection& fdc = entry->second;
 
         if (dbus_watch_get_enabled(watch)) {
             auto flags = dbus_watch_get_flags (watch);
@@ -523,7 +523,7 @@ namespace ultrabus {
         auto entry = self->io_watches.find (watch);
         if (entry == self->io_watches.end())
             return;
-        iomultiplex::FdConnection& fdc = entry->second;
+        iomultiplex::fd_connection& fdc = entry->second;
 
         bool enabled = dbus_watch_get_enabled (watch);
         auto flags = dbus_watch_get_flags (watch);
@@ -556,7 +556,8 @@ namespace ultrabus {
                 DBG_LOG ("    Disable watch for TX");
 #endif
             fdc.cancel ((flags & DBUS_WATCH_READABLE),  // Cancel RX if readable
-                        (flags & DBUS_WATCH_WRITABLE)); // Cancel TX if readable
+                        (flags & DBUS_WATCH_WRITABLE),
+                        false); // Cancel TX if readable
         }
     }
 
@@ -583,8 +584,8 @@ namespace ultrabus {
             auto interval = dbus_timeout_get_interval (timeout);
             if (interval >= 0) {
                 DBG_LOG ("Set timer: %d", interval);
-                timer_id = self->io_timers->set (interval, interval,
-                                                 [self, timeout](iomultiplex::TimerSet& ts, long timer_id)
+                timer_id = self->io_timers->set (interval,
+                                                 [self, timeout](iomultiplex::timer_set& ts, long timer_id)
                     {
                         // Timer expiration callback
                         DBG_LOG ("timed out");
@@ -646,8 +647,8 @@ namespace ultrabus {
             auto interval = dbus_timeout_get_interval (timeout);
             DBG_LOG ("Enable timer, interval: %d", (int)interval);
             if (interval >= 0) {
-                timer_id = self->io_timers->set (interval, interval,
-                                                 [self, timeout](iomultiplex::TimerSet& ts, long timer_id)
+                timer_id = self->io_timers->set (interval,
+                                                 [self, timeout](iomultiplex::timer_set& ts, long timer_id)
                     {
                         // Timer expiration callback
                         DBG_LOG ("timed out");

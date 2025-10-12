@@ -157,9 +157,9 @@ namespace ultrabus {
 
         // DBus I/O
         std::mutex io_mutex;
-        iomultiplex::TimerSet* io_timers;
+        iomultiplex::timer_set* io_timers;
         std::map<DBusTimeout*, long> io_timeouts;
-        std::map<DBusWatch*, iomultiplex::FdConnection> io_watches;
+        std::map<DBusWatch*, iomultiplex::fd_connection> io_watches;
 
         void start_message_dispatcher ();
 
