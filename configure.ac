@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2023 Dan Arrhenius <dan@ultramarin.se>
+# Copyright (C) 2021-2023,2026 Dan Arrhenius <dan@ultramarin.se>
 #
 # This file is part of libultrabus.
 #
@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-AC_INIT([libultrabus], [0.0.3], [ultrabus@ultramarin.se])
+AC_INIT([libultrabus], [0.0.4], [ultrabus@ultramarin.se])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign dist-bzip2 subdir-objects])
 
 AC_PROG_CC
@@ -32,7 +32,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AM_SILENT_RULES([yes])
 
 #
-# Release 0.0.3
+# Release 0.0.4
 #
 # Library interface version x:y:z
 #                           | | |
@@ -44,7 +44,7 @@ AM_SILENT_RULES([yes])
 #
 # Library version (CURRENT:REVISION:AGE)
 #
-LIBRARY_VERSION=0:3:0
+LIBRARY_VERSION=0:4:0
 AC_SUBST([LIBRARY_VERSION])
 
 #
