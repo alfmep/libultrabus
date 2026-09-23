@@ -1009,7 +1009,7 @@ namespace ultrabus {
             ret.err (-1, "Not connected");
             return ret;
         }
-        message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "BecomeMonitor");
+        message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, "org.freedesktop.DBus.Monitoring", "BecomeMonitor");
         dbus_array array ("s");
         for (const auto& rule : rules)
             array.push_back (rule);
