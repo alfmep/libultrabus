@@ -420,7 +420,7 @@ static void test_to_string_and_json ()
 
     std::string json = s.to_json ();
     CHECK (json.find (R"json("type":"struct")json") != std::string::npos);
-    CHECK (json.find (R"json("sign":"(isb)")json") != std::string::npos);
+    CHECK (json.find (R"json("signature":"(isb)")json") != std::string::npos);
     CHECK (json.find ("42") != std::string::npos);
     CHECK (json.find (R"json("hi")json") != std::string::npos);
 

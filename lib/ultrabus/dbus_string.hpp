@@ -387,16 +387,16 @@ namespace ultrabus {
             std::string json (R"({"type":")");
             switch (type_code()) {
             case 's':
-                json.append (R"(string","sign":"s","value":")");
+                json.append (R"(string","signature":"s","value":")");
                 break;
             case 'o':
-                json.append (R"(object_path","sign":"o","value":")");
+                json.append (R"(object_path","signature":"o","value":")");
                 break;
             case 'g':
-                json.append (R"(signature","sign":"g","value":")");
+                json.append (R"(signature","signature":"g","value":")");
                 break;
             default:
-                json.append (R"(invalid","sign":"-","value":")");
+                json.append (R"(invalid","signature":"-","value":")");
             }
             for (unsigned char ch : basic_value) {
                 if (ch<0x20 || ch=='"' || ch=='\\') {

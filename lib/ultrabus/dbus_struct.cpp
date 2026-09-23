@@ -113,7 +113,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     std::string dbus_struct::to_json () const
     {
-        std::string json (R"({"type":"struct","sign":")");
+        std::string json (R"({"type":"struct","signature":")");
         json.append (signature());
         json.append (R"(","value":[)");
 

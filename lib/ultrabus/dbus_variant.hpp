@@ -436,7 +436,7 @@ namespace ultrabus {
         }
 
         virtual std::string to_json () const {
-            std::string json (R"({"type":"variant","sign":"v","value":)");
+            std::string json (R"({"type":"variant","signature":"v","value":)");
             json.append (get().to_json());
             json.push_back ('}');
             return json;

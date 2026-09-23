@@ -91,7 +91,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     std::string dbus_array::to_json () const
     {
-        std::string json (R"({"type":"array","sign":")");
+        std::string json (R"({"type":"array","signature":")");
         json.append (signature());
         json.append (R"(","value":[)");
 

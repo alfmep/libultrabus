@@ -583,13 +583,13 @@ static void test_to_json ()
 {
     section ("to_json()");
 
-    CHECK (dbus_i32(42).to_json() == R"({"type":"int32","sign":"i","value":42})");
-    CHECK (dbus_bool(true).to_json() == R"({"type":"bool","sign":"b","value":true})");
-    CHECK (dbus_double(1.5).to_json() == R"({"type":"double","sign":"d","value":1.500000})");
+    CHECK (dbus_i32(42).to_json() == R"({"type":"int32","signature":"i","value":42})");
+    CHECK (dbus_bool(true).to_json() == R"({"type":"boolean","signature":"b","value":true})");
+    CHECK (dbus_double(1.5).to_json() == R"({"type":"double","signature":"d","value":1.500000})");
 
-    CHECK (dbus_string("hi").to_json() == R"({"type":"string","sign":"s","value":"hi"})");
-    CHECK (dbus_opath("/a").to_json() == R"({"type":"object_path","sign":"o","value":"/a"})");
-    CHECK (dbus_signature("i").to_json() == R"({"type":"signature","sign":"g","value":"i"})");
+    CHECK (dbus_string("hi").to_json() == R"({"type":"string","signature":"s","value":"hi"})");
+    CHECK (dbus_opath("/a").to_json() == R"({"type":"object_path","signature":"o","value":"/a"})");
+    CHECK (dbus_signature("i").to_json() == R"({"type":"signature","signature":"g","value":"i"})");
 
     // Special characters must be escaped.
     dbus_string special ("a\"b\\c\nd");

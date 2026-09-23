@@ -407,9 +407,9 @@ static void test_to_string_and_json ()
 
     std::string json = v_int.to_json ();
     CHECK (json.find (R"("type":"variant")") != std::string::npos);
-    CHECK (json.find (R"("sign":"v")") != std::string::npos);
+    CHECK (json.find (R"("signature":"v")") != std::string::npos);
     CHECK (json.find (R"("value":)") != std::string::npos);
-    CHECK (json.find (R"({"type":"int32","sign":"i","value":42})") != std::string::npos);
+    CHECK (json.find (R"({"type":"int32","signature":"i","value":42})") != std::string::npos);
 }
 
 

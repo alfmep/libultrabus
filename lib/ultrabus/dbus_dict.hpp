@@ -940,7 +940,7 @@ namespace ultrabus {
         }
 
         virtual std::string to_json () const {
-            std::string json (R"({"type":"dict","sign":")");
+            std::string json (R"({"type":"dict","signature":")");
             json.append (signature());
             json.append (R"(","value":[)");
             for (auto i=items.begin(); i != items.end(); ++i) {

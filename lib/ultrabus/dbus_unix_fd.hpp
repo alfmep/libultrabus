@@ -147,7 +147,7 @@ namespace ultrabus {
 
         virtual std::string to_json () const {
             std::string json;
-            json = "{\"type\":\"unix_fd\",\"sign\":\"h\",\"value\":";
+            json = R"({"type":"unix_fd","signature":"h","value":)";
             json.append (std::to_string(basic_value));
             json.push_back ('}');
             return json;

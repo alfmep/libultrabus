@@ -541,9 +541,9 @@ static void test_to_string_and_json ()
 
     std::string json = d.to_json();
     CHECK (json.find (R"("type":"dict")") != std::string::npos);
-    CHECK (json.find (R"("sign":"a{si}")") != std::string::npos);
+    CHECK (json.find (R"("signature":"a{si}")") != std::string::npos);
     CHECK (json.find (R"("value":[)") != std::string::npos);
-    CHECK (json.find (R"({"key":{"type":"string","sign":"s","value":"a"},)") != std::string::npos);
+    CHECK (json.find (R"({"key":{"type":"string","signature":"s","value":"a"},)") != std::string::npos);
 }
 
 

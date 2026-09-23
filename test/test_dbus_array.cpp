@@ -549,9 +549,9 @@ static void test_to_string_and_json ()
 
     std::string json = ints.to_json();
     CHECK (json.find (R"("type":"array")") != std::string::npos);
-    CHECK (json.find (R"("sign":"ai")") != std::string::npos);
+    CHECK (json.find (R"("signature":"ai")") != std::string::npos);
     CHECK (json.find (R"("value":[)") != std::string::npos);
-    CHECK (json.find (R"({"type":"int32","sign":"i","value":1})") != std::string::npos);
+    CHECK (json.find (R"({"type":"int32","signature":"i","value":1})") != std::string::npos);
 }
 
 

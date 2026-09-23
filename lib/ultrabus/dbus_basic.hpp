@@ -721,31 +721,31 @@ namespace ultrabus {
         virtual std::string to_json () const {
             std::string json;
             if constexpr (std::same_as<value_type, bool>) {
-                json = R"({"type":"bool","sign":"b","value":)";
+                json = R"({"type":"boolean","signature":"b","value":)";
                 json.append (basic_value ? "true" : "false");
             }else if constexpr (std::same_as<value_type, uint8_t>) {
-                json = R"({"type":"byte","sign":"y","value":)";
+                json = R"({"type":"byte","signature":"y","value":)";
                 json.append (std::to_string((unsigned)basic_value));
             }else if constexpr (std::same_as<value_type, int16_t>) {
-                json = R"({"type":"int16","sign":"n","value":)";
+                json = R"({"type":"int16","signature":"n","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, uint16_t>) {
-                json = R"({"type":"uint16","sign":"q","value":)";
+                json = R"({"type":"uint16","signature":"q","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, int32_t>) {
-                json = R"({"type":"int32","sign":"i","value":)";
+                json = R"({"type":"int32","signature":"i","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, uint32_t>) {
-                json = R"({"type":"uint32","sign":"u","value":)";
+                json = R"({"type":"uint32","signature":"u","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, int64_t>) {
-                json = R"({"type":"int64","sign":"x","value":)";
+                json = R"({"type":"int64","signature":"x","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, uint64_t>) {
-                json = R"({"type":"uint64","sign":"t","value":)";
+                json = R"({"type":"uint64","signature":"t","value":)";
                 json.append (std::to_string(basic_value));
             }else if constexpr (std::same_as<value_type, double>) {
-                json = R"({"type":"double","sign":"d","value":)";
+                json = R"({"type":"double","signature":"d","value":)";
                 json.append (std::to_string(basic_value));
             }
             json.push_back ('}');
