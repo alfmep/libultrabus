@@ -709,6 +709,8 @@ namespace ultrabus {
             break;
         case DBUS_MESSAGE_TYPE_ERROR:
             json.append (R"("error")");
+            json.append (R"(,"error_name":")");
+            json.append (error_name());
             break;
         case DBUS_MESSAGE_TYPE_INVALID:
         default:

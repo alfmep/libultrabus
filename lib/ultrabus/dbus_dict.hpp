@@ -49,9 +49,70 @@ namespace ultrabus {
 
         /** @brief Return string view of the dictionary value signature. */
         virtual const std::string_view value_signature () const = 0;
-        // virtual bool empty () const = 0;
-        // virtual size_t size () const = 0;
-        // virtual void clear () = 0;
+
+        /** Check if the dictionary is empty */
+        virtual bool empty () const = 0;
+
+        /** Return the number of entries in the dictionary. */
+        virtual size_t size () const = 0;
+
+        /** Clear the contents of the dictionary. */
+        virtual void clear () = 0;
+
+        /**
+         * Set a value for a specific key.
+         * @param key Key to set.
+         * @param value The value for the given key.
+         *              The value is copied.
+         * @return <code>true</code> if the key and value signature are compatible;
+         *         otherwise <code>false</code> and the dictionary is unchanged.
+         */
+        virtual bool set (const dbus_type& key, const dbus_type& value) = 0;
+
+        /**
+         * Set a value for a specific key.
+         * @param key Key to set.
+         * @param value The value for the given key.
+         *              The value is moved.
+         * @return <code>true</code> if the key and value signature are compatible;
+         *         otherwise <code>false</code> and the dictionary is unchanged.
+         */
+        virtual bool set (const dbus_type& key, dbus_type&& value) = 0;
+
+        /**
+         * Set a value for a specific key by moving a pointer to the value.
+         * @param key Key to set.
+         * @param value A unique pointer to the value to set.
+         *              The pointer is transferred to the dictionary and
+         *              is invalid if this method returns <code>true</code>.
+         * @return <code>true</code> if the value signature is compatible; otherwise
+         *         <code>false</code> and the dictionary and pointer is unchanged.
+         */
+        virtual bool set (const dbus_type& key, std::unique_ptr<dbus_type>&& value) = 0;
+
+        /**
+         * Get a copy of the value for a specific key.
+         * @param key The key for the value to get.
+         * @param dest Where to store a copy of the value.<br/>
+         *             The DBus signature of <code>dest</code>
+         *             must match exactly with the value referred
+         *             to by <code>key</code>. Or if <code>key</code>
+         *             points to a <code>dbus_variant</code>, then the
+         *             value contained in the <code>dbus_variant</code>
+         *             must have the same signature as <code>dest</code>.
+         * @return <code>true</code> if the key was
+         *         found and the value is of the wanted type.<br/>
+         *         If the key wasn't found, or the data
+         *         type of <code>dest</code> doesn't match
+         *         the value, <code>false</code> is returned
+         *         and <code>dest</code> remains unchanged.
+         * @note The value for the given key is
+         *       <em>copied</em> to <code>dest</code>. Use
+         *       an iterator returned by <code>find()</code>
+         *       if a reference to the value is preferred.
+         */
+        virtual bool get (const dbus_type& key, dbus_type& dest) const = 0;
+
 
     protected:
         constexpr dbus_dict_base (const char* sig_arg) : dbus_type(sig_arg) {}
@@ -443,16 +504,13 @@ namespace ultrabus {
 
 
         /** Check if the dictionary is empty */
-        constexpr bool empty () const {return items.empty();}
-        //virtual bool empty () const {return items.empty();}
+        virtual bool empty () const {return items.empty();}
 
         /** Return the number of entries in the dictionary. */
-        constexpr size_t size () const {return items.size();}
-        //virtual size_t size () const {return items.size();}
+        virtual size_t size () const {return items.size();}
 
         /** Clear the contents of the dictionary. */
-        constexpr void clear () {items.clear();}
-        //virtual void clear () {items.clear();}
+        virtual void clear () {items.clear();}
 
         /**
          * Check if the dictionary contains a specific key.
@@ -495,6 +553,18 @@ namespace ultrabus {
                 return false;
             return true;
         }
+        virtual bool set (const dbus_type& key, const dbus_type& value) {
+            if (key.type_code() != key_type_code()) {
+                if (key.type_code() == DBUS_TYPE_VARIANT) {
+                    const auto& vkey = key.cast<dbus_variant>().get ();
+                    if (vkey.type_code() == key_type_code())
+                        return set (vkey.cast<key_type_t>(), value);
+                }
+                return false;
+            }
+            return set (key.cast<key_type_t>(), value);
+        }
+
 
         /**
          * Set a value for a specific key by moving it.
@@ -512,6 +582,17 @@ namespace ultrabus {
             else
                 return false;
             return true;
+        }
+        virtual bool set (const dbus_type& key, dbus_type&& value) {
+            if (key.type_code() != key_type_code()) {
+                if (key.type_code() == DBUS_TYPE_VARIANT) {
+                    const auto& vkey = key.cast<dbus_variant>().get ();
+                    if (vkey.type_code() == key_type_code())
+                        return set (vkey.cast<key_type_t>(), std::forward<dbus_type>(value));
+                }
+                return false;
+            }
+            return set (key.cast<key_type_t>(), std::forward<dbus_type>(value));
         }
 
         /**
@@ -533,6 +614,17 @@ namespace ultrabus {
             else
                 return false;
             return true;
+        }
+        virtual bool set (const dbus_type& key, std::unique_ptr<dbus_type>&& value) {
+            if (key.type_code() != key_type_code()) {
+                if (key.type_code() == DBUS_TYPE_VARIANT) {
+                    const auto& vkey = key.cast<dbus_variant>().get ();
+                    if (vkey.type_code() == key_type_code())
+                        return set (vkey.cast<key_type_t>(), std::forward<std::unique_ptr<dbus_type>>(value));
+                }
+                return false;
+            }
+            return set (key.cast<key_type_t>(), std::forward<std::unique_ptr<dbus_type>>(value));
         }
 
         /**
@@ -743,6 +835,18 @@ namespace ultrabus {
             }
             return got_value;
         }
+        virtual bool get (const dbus_type& key, dbus_type& dest) const {
+            if (key.type_code() != key_type_code()) {
+                if (key.type_code() == DBUS_TYPE_VARIANT) {
+                    const auto& vkey = key.cast<dbus_variant>().get ();
+                    if (vkey.type_code() == key_type_code())
+                        return get (vkey.cast<key_type_t>(), dest);
+                }
+                return false;
+            }
+            return get (key.cast<key_type_t>(), dest);
+        }
+
 
         /**
          * Get a copy of the value for a specific key.
