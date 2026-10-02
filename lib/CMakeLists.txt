@@ -80,6 +80,8 @@ target_sources (ultrabus PRIVATE
     ultrabus/object_proxy.cpp
     ultrabus/object_handler.cpp
     ultrabus/callback_object_handler.cpp
+    ultrabus/object.cpp
+    ultrabus/interface.cpp
     ultrabus/utils.cpp
     ultrabus/org_freedesktop_DBus_Peer.cpp
     ultrabus/org_freedesktop_DBus_Introspectable.cpp
@@ -113,6 +115,8 @@ set (PUBLIC_HEADER_FILES
     ultrabus/object_proxy.hpp
     ultrabus/object_handler.hpp
     ultrabus/callback_object_handler.hpp
+    ultrabus/object.hpp
+    ultrabus/interface.hpp
     ultrabus/utils.hpp
     ultrabus/org_freedesktop_DBus_Peer.hpp
     ultrabus/org_freedesktop_DBus_Introspectable.hpp

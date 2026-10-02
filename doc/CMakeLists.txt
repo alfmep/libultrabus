@@ -52,6 +52,8 @@ add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/html/index.html
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/object_handler.hpp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/callback_object_handler.hpp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/object_proxy.hpp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/object.hpp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/interface.hpp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/utils.hpp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/org_freedesktop_DBus_Peer.hpp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../lib/ultrabus/org_freedesktop_DBus_Introspectable.hpp
