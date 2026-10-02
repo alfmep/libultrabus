@@ -62,7 +62,7 @@ namespace ultrabus {
         if (entry != opath_map.end()) {
             // Path already registered, replace callback
             entry->second.second = callback;
-            return false;
+            return true;
         }
 
         if (!conn.is_connected())
