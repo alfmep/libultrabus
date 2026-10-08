@@ -37,7 +37,8 @@ namespace ultrabus {
         : message_filter (conn),
           target (bus_name),
           opath (object_path),
-          def_iface (default_interface)
+          def_iface (default_interface),
+          def_timeout (DBUS_TIMEOUT_USE_DEFAULT)
     {
         if (!dbus_validate_bus_name(bus_name.c_str(), nullptr))
             throw std::invalid_argument ("Invalid DBus bus name");
@@ -59,6 +60,14 @@ namespace ultrabus {
 
         def_iface = default_interface;
         return true;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void object_proxy::default_timeout (int default_timeout_arg)
+    {
+        def_timeout = default_timeout_arg<0 ? DBUS_TIMEOUT_USE_DEFAULT : default_timeout_arg;
     }
 
 
@@ -164,7 +173,7 @@ namespace ultrabus {
 
         message msg (target, opath, DBUS_INTERFACE_PROPERTIES, "Get");
         msg.append_args (interface, property_name);
-        auto reply = conn.send_and_wait (msg, timeout);
+        auto reply = conn.send_and_wait (msg, timeout<0 ? def_timeout : timeout);
         if (reply.is_error()) {
             ret.err (-1, reply.error_name() + std::string(": ") + reply.error_msg());
         }
@@ -209,7 +218,7 @@ namespace ultrabus {
                     }
                     callback (ret);
                 },
-                timeout);
+                timeout<0 ? def_timeout : timeout);
     }
 
 
@@ -226,7 +235,7 @@ namespace ultrabus {
 
         message msg (target, opath, DBUS_INTERFACE_PROPERTIES, "GetAll");
         msg.append_args (interface);
-        auto reply = conn.send_and_wait (msg, timeout);
+        auto reply = conn.send_and_wait (msg, timeout<0 ? def_timeout : timeout);
         if (reply.is_error()) {
             ret.err (-1, reply.error_name() + std::string(": ") + reply.error_msg());
         }
@@ -271,7 +280,7 @@ namespace ultrabus {
                     }
                     callback (ret);
                 },
-                timeout);
+                timeout<0 ? def_timeout : timeout);
     }
 
 
@@ -290,7 +299,7 @@ namespace ultrabus {
         }
         message msg (target, opath, DBUS_INTERFACE_PROPERTIES, "Set");
         msg.append_args (interface, property_name, value);
-        auto reply = conn.send_and_wait (msg, timeout);
+        auto reply = conn.send_and_wait (msg, timeout<0 ? def_timeout : timeout);
         if (reply.is_error()) {
             ret = false;
             ret.err (-1, reply.error_name() + std::string(": ") + reply.error_msg());
@@ -328,7 +337,7 @@ namespace ultrabus {
                     }
                     callback (ret);
                 },
-                timeout);
+                timeout<0 ? def_timeout : timeout);
     }
 
 

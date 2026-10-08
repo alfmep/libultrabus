@@ -130,6 +130,21 @@ namespace ultrabus {
         bool default_interface (const std::string& default_interface);
 
         /**
+         * Return the default timeout byt this object when sending messages on the bus.
+         * By default, the default timeout is DBUS_TIMEOUT_USE_DEFAULT.
+         * @return The default timeout byt this object when sending messages on the bus.
+         */
+        int default_timeout () const {return def_timeout;}
+
+        /**
+         * Set the default timeout byt this object when sending messages on the bus.
+         * By default, the default timeout is DBUS_TIMEOUT_USE_DEFAULT.
+         * @param default_timeout_arg The default timeout used this object
+         *                            when sending messages on the bus.
+         */
+        void default_timeout (int default_timeout_arg);
+
+        /**
          * Set/remove a callback to be called when interfaces are added to this object.
          * @param callback Callback for added interfaces. Pass
          *                 <code>nullptr</code> to remove it; a non-null
@@ -191,12 +206,13 @@ namespace ultrabus {
         /**
          * Call a method on the default interface and wait for its reply.
          * @param method_name The name of the method to call.
-         * @param timeout The maximum time in milliseconds to wait for a message reply.
+         * @param timeout The maximum time in milliseconds to wait for a message
+         *        reply, or the default timeout value.
          * @return The reply message.
          */
         message call (const std::string& method_name, int timeout=DBUS_TIMEOUT_USE_DEFAULT) {
             message msg (target, opath, def_iface, method_name);
-            return conn.send_and_wait (msg, timeout);
+            return conn.send_and_wait (msg, timeout<0 ? def_timeout:timeout);
         }
 
         /**
@@ -208,13 +224,12 @@ namespace ultrabus {
          * @param arg First argument to append.
          * @param args Remaining arguments to append.
          * @return The reply message.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<any_dbus_or_basic_cpp_type T, typename... Targs>
         message call (const std::string& method_name, const T& arg, const Targs&... args) {
             message msg (target, opath, def_iface, method_name);
             msg.append_args (arg, args...);
-            return conn.send_and_wait (msg);
+            return conn.send_and_wait (msg, def_timeout);
         }
 
         /**
@@ -224,13 +239,12 @@ namespace ultrabus {
          * @param arg Null-terminated string argument to append; it must not be null.
          * @param args Remaining arguments to append.
          * @return The reply message.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<typename... Targs>
         message call (const std::string& method_name, const char* arg, const Targs&... args) {
             message msg (target, opath, def_iface, method_name);
             msg.append_args (arg, args...);
-            return conn.send_and_wait (msg);
+            return conn.send_and_wait (msg, def_timeout);
         }
 
         /**
@@ -240,7 +254,7 @@ namespace ultrabus {
          *                 retains it until delivery; its message reference is
          *                 valid only during the callback.
          * @param timeout The maximum time in milliseconds to wait for a message
-         *        reply, or <code>DBUS_TIMEOUT_USE_DEFAULT</code>.
+         *        reply, or use the default timeout value.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -249,7 +263,7 @@ namespace ultrabus {
                    int timeout=DBUS_TIMEOUT_USE_DEFAULT)
         {
             message msg (target, opath, def_iface, method_name);
-            return conn.send (msg, reply_cb, timeout);
+            return conn.send (msg, reply_cb, timeout<0 ? def_timeout:timeout);
         }
 
         /**
@@ -264,7 +278,6 @@ namespace ultrabus {
          * @param args Remaining arguments to append.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<any_dbus_or_basic_cpp_type T, typename... Targs>
         bool call (const std::string& method_name,
@@ -274,7 +287,7 @@ namespace ultrabus {
         {
             message msg (target, opath, def_iface, method_name);
             msg.append_args (arg, args...);
-            return conn.send (msg, reply_cb);
+            return conn.send (msg, reply_cb, def_timeout);
         }
 
         /**
@@ -287,7 +300,6 @@ namespace ultrabus {
          * @param args Remaining arguments to append.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<typename... Targs>
         bool call (const std::string& method_name,
@@ -297,7 +309,7 @@ namespace ultrabus {
         {
             message msg (target, opath, def_iface, method_name);
             msg.append_args (arg, args...);
-            return conn.send (msg, reply_cb);
+            return conn.send (msg, reply_cb, def_timeout);
         }
 
         /**
@@ -305,7 +317,7 @@ namespace ultrabus {
          * @param interface The method interface.
          * @param method_name The name of the method.
          * @param timeout The maximum time in milliseconds to wait for a message
-         *        reply, or <code>DBUS_TIMEOUT_USE_DEFAULT</code>.
+         *        reply, or the default timeout value.
          * @return The reply message.
          */
         message call_iface (const std::string& interface,
@@ -313,7 +325,7 @@ namespace ultrabus {
                             int timeout=DBUS_TIMEOUT_USE_DEFAULT)
         {
             message msg (target, opath, interface, method_name);
-            return conn.send_and_wait (msg, timeout);
+            return conn.send_and_wait (msg, timeout<0 ? def_timeout:timeout);
         }
 
         /**
@@ -327,7 +339,6 @@ namespace ultrabus {
          * @param arg First argument to append.
          * @param args Remaining arguments to append.
          * @return The reply message.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<any_dbus_or_basic_cpp_type T, typename... Targs>
         message call_iface (const std::string& interface,
@@ -337,7 +348,7 @@ namespace ultrabus {
         {
             message msg (target, opath, interface, method_name);
             msg.append_args (arg, args...);
-            return conn.send_and_wait (msg);
+            return conn.send_and_wait (msg, def_timeout);
         }
 
         /**
@@ -348,7 +359,6 @@ namespace ultrabus {
          * @param arg Null-terminated string to append; it must not be null.
          * @param args Remaining arguments to append.
          * @return The reply message.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<typename... Targs>
         message call_iface (const std::string& interface,
@@ -358,7 +368,7 @@ namespace ultrabus {
         {
             message msg (target, opath, interface, method_name);
             msg.append_args (arg, args...);
-            return conn.send_and_wait (msg);
+            return conn.send_and_wait (msg, def_timeout);
         }
 
         /**
@@ -369,7 +379,7 @@ namespace ultrabus {
          *                 retains it until delivery; its message reference is
          *                 valid only during the callback.
          * @param timeout The maximum time in milliseconds to wait for a message
-         *        reply, or <code>DBUS_TIMEOUT_USE_DEFAULT</code>.
+         *        reply, or the default timeout value.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -379,7 +389,7 @@ namespace ultrabus {
                          int timeout=DBUS_TIMEOUT_USE_DEFAULT)
         {
             message msg (target, opath, interface, method_name);
-            return conn.send (msg, reply_cb, timeout);
+            return conn.send (msg, reply_cb, timeout<0 ? def_timeout:timeout);
         }
 
         /**
@@ -395,7 +405,6 @@ namespace ultrabus {
          * @param args Remaining arguments to append.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<any_dbus_or_basic_cpp_type T, typename... Targs>
         bool call_iface (const std::string& interface,
@@ -406,7 +415,7 @@ namespace ultrabus {
         {
             message msg (target, opath, interface, method_name);
             msg.append_args (arg, args...);
-            return conn.send (msg, reply_cb);
+            return conn.send (msg, reply_cb, def_timeout);
         }
 
         /**
@@ -420,7 +429,6 @@ namespace ultrabus {
          * @param args Remaining arguments to append.
          * @return <code>false</code> if the message couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
-         * @note When using this method, the timeout used is DBUS_TIMEOUT_USE_DEFAULT.
          */
         template<typename... Targs>
         bool call_iface (const std::string& interface,
@@ -431,13 +439,12 @@ namespace ultrabus {
         {
             message msg (target, opath, interface, method_name);
             msg.append_args (arg, args...);
-            return conn.send (msg, reply_cb);
+            return conn.send (msg, reply_cb, def_timeout);
         }
 
         /**
          * Query the object for all properties using the default interface.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return All properties on the default interface on success;
          *         otherwise a retvalue whose err() and what() describe the
          *         failure.
@@ -451,8 +458,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the query couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -467,8 +473,7 @@ namespace ultrabus {
          * Query the object for all properties using a specific interface.
          *
          * @param interface D-Bus interface to query.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return All properties on the specified interface on success;
          *         otherwise a retvalue whose err() and what() describe the
          *         failure.
@@ -482,8 +487,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the query couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -494,8 +498,7 @@ namespace ultrabus {
         /**
          * Query the object for a property using the default interface.
          * @param property_name The name of the property.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return The property variant on success; otherwise a retvalue whose
          *         err() and what() describe the failure.
          */
@@ -511,8 +514,7 @@ namespace ultrabus {
          * @tparam T C++ type accepted by dbus_basic_cpp_types.
          * @param value Destination for the property value; it is modified only
          *              when the value can be converted to <code>T</code>.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>true</code> if the property is available and
          *         could be read, <code>false</code> if not.
          * @see ultrabus::dbus_basic_cpp_types
@@ -531,8 +533,7 @@ namespace ultrabus {
          * @tparam T D-Bus wrapper type accepted by any_dbus_type.
          * @param value Destination for the property value; it is modified only
          *              when its D-Bus signature matches.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>true</code> if the property is available and
          *         could be read, <code>false</code> if not.
          * @see ultrabus::any_dbus_type
@@ -551,8 +552,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the query couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -567,8 +567,7 @@ namespace ultrabus {
          * Query the object for a property using a specific interface.
          * @param interface The DBus interface to query.
          * @param property_name The name of the property.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return The property variant on success; otherwise a retvalue whose
          *         err() and what() describe the failure.
          */
@@ -583,8 +582,7 @@ namespace ultrabus {
          * @tparam T C++ type accepted by dbus_basic_cpp_types.
          * @param value Destination for the property value; it is modified only
          *              when the value can be converted to <code>T</code>.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>true</code> if the property is available and
          *         could be read, <code>false</code> if not.
          */
@@ -633,8 +631,7 @@ namespace ultrabus {
          * @tparam T D-Bus wrapper type accepted by any_dbus_type.
          * @param value Destination for the property value; it is modified only
          *              when its D-Bus signature matches.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>true</code> if the property is available and
          *         could be read, <code>false</code> if not.
          */
@@ -666,8 +663,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the query couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
          */
@@ -682,8 +678,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @tparam T C++ type accepted by dbus_basic_cpp_types.
          * @param value New value to convert to a D-Bus basic type.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure.
          */
@@ -701,8 +696,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @tparam T D-Bus wrapper type accepted by any_dbus_type.
          * @param value New D-Bus value to send.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure.
          */
@@ -722,8 +716,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @param value Null-terminated string to copy as the new value; it
          *              must not be null.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure,
          *         including a null <code>value</code>.
@@ -752,8 +745,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -782,8 +774,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -821,8 +812,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -850,8 +840,7 @@ namespace ultrabus {
          * @param interface The name of the interface.
          * @param property_name The name of the property.
          * @param value New variant value to send.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure.
          */
@@ -865,8 +854,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @tparam T C++ type accepted by dbus_basic_cpp_types.
          * @param value New value to convert to a D-Bus basic type.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure.
          */
@@ -885,8 +873,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @tparam T D-Bus wrapper type accepted by any_dbus_type.
          * @param value New D-Bus value to send.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure.
          */
@@ -905,8 +892,7 @@ namespace ultrabus {
          * @param property_name The name of the property.
          * @param value Null-terminated string to copy as the new value; it
          *              must not be null.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return A successful retvalue containing <code>true</code>, or an
          *         error retvalue whose err() and what() describe the failure,
          *         including a null <code>value</code>.
@@ -937,8 +923,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -961,8 +946,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -992,8 +976,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -1024,8 +1007,7 @@ namespace ultrabus {
          * @param callback Callback invoked when a result is received. The
          *                 connection retains it until delivery; its result
          *                 reference is valid only during the callback.
-         * @param timeout Timeout in milliseconds, or
-         *                DBUS_TIMEOUT_USE_DEFAULT to use the bus default.
+         * @param timeout Timeout in milliseconds, or the default timeout value.
          * @return <code>false</code> if the message
          *         couldn't be sent on the bus,
          *         Otherwise <code>true</code>.
@@ -1063,6 +1045,7 @@ namespace ultrabus {
         std::string iface_add_om_root;
         std::string iface_del_om_root;
         std::mutex cb_mutex;
+        int def_timeout;
         object_ifaces_added_cb_t object_ifaces_added_cb;
         object_ifaces_removed_cb_t object_ifaces_removed_cb;
         properties_changed_cb_t properties_changed_cb;
