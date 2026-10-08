@@ -877,7 +877,7 @@ namespace ultrabus {
          *       if a reference to the value is preferred.
          */
         template<dbus_basic_cpp_types T>
-        bool get (const key_type_t& key, T& dest) {
+        bool get (const key_type_t& key, T& dest) const {
             const auto entry = items.find (key);
             if (entry == items.end())
                 return false;
