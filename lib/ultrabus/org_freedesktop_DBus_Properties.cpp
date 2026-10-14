@@ -376,21 +376,15 @@ namespace ultrabus {
             invalidated_properties.emplace (prop_name.to_string());
 
 
-        const std::lock_guard lock (props_changed_mutex);
+        std::unique_lock props_changed_lock (props_changed_mutex);
         const auto key = std::make_pair (msg.sender(), msg.path());
         auto entry = props_changed_callbacks.find (key);
         if (entry == props_changed_callbacks.end() || entry->second==nullptr)
             return false;
+
         auto cb = entry->second;
-        props_changed_mutex.unlock ();
-        try {
-            cb (iface_name, dbus_changed_props, invalidated_properties);
-        }
-        catch (...) {
-            props_changed_mutex.lock ();
-            throw;
-        }
-        props_changed_mutex.lock ();
+        props_changed_lock.unlock ();
+        cb (iface_name, dbus_changed_props, invalidated_properties);
 
         return false;
     }

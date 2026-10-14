@@ -104,6 +104,8 @@ namespace ultrabus {
          */
         org_freedesktop_DBus_ObjectManager (connection& conn) : message_filter(conn) {}
 
+        virtual ~org_freedesktop_DBus_ObjectManager () = default;
+
         /**
          * Retrieve all objects, interfaces, and properties managed by a
          * remote object implementing <code>org.freedesktop.DBus.ObjectManager</code>.
@@ -218,8 +220,8 @@ namespace ultrabus {
                 const std::string& bus_name,
                 const std::string& opath,
                 iface_removed_cb callback);
-        void handle_added_ifaces (message& msg, iface_added_cb cb);
-        void handle_removed_ifaces (message& msg, iface_removed_cb cb);
+        void handle_added_ifaces (message& msg, std::unique_lock<std::mutex>& lock, iface_added_cb cb);
+        void handle_removed_ifaces (message& msg, std::unique_lock<std::mutex>& lock, iface_removed_cb cb);
     };
 
 

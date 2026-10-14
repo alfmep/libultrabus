@@ -506,7 +506,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     // cb_mutex is locked !!!
     //--------------------------------------------------------------------------
-    bool object_proxy::on_iface_added (message& msg)
+    bool object_proxy::on_iface_added (message& msg, std::unique_lock<std::mutex>& cb_lock)
     {
         // message signature: "oa{sa{sv}}"
         dbus_opath opath_arg;
@@ -521,14 +521,8 @@ namespace ultrabus {
             ifaces_props.emplace (i.first.get(), std::move(i.second.cast<dbus_string_dict>()));
 
         auto cb = object_ifaces_added_cb;
-        cb_mutex.unlock ();
-        try {
-            cb (ifaces_props);
-        }catch (...) {
-            cb_mutex.lock ();
-            throw;
-        }
-        cb_mutex.lock ();
+        cb_lock.unlock ();
+        cb (ifaces_props);
         return true;
     }
 
@@ -536,7 +530,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     // cb_mutex is locked !!!
     //--------------------------------------------------------------------------
-    bool object_proxy::on_iface_removed (message& msg)
+    bool object_proxy::on_iface_removed (message& msg, std::unique_lock<std::mutex>& cb_lock)
     {
         // message signature: "oas"
         dbus_opath opath_arg;
@@ -551,14 +545,8 @@ namespace ultrabus {
             removed_ifaces.emplace (i.to_string());
 
         auto cb = object_ifaces_removed_cb;
-        cb_mutex.unlock ();
-        try {
-            cb (removed_ifaces);
-        }catch (...) {
-            cb_mutex.lock ();
-            throw;
-        }
-        cb_mutex.lock ();
+        cb_lock.unlock ();
+        cb (removed_ifaces);
         return true;
     }
 
@@ -566,7 +554,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     // cb_mutex is locked !!!
     //--------------------------------------------------------------------------
-    bool object_proxy::on_properties_changed (message& msg)
+    bool object_proxy::on_properties_changed (message& msg, std::unique_lock<std::mutex>& cb_lock)
     {
         std::string iface_name;
         dbus_string_dict dbus_changed_props (DBUS_TYPE_VARIANT);
@@ -579,14 +567,8 @@ namespace ultrabus {
             invalidated_properties.emplace (prop_name.to_string());
 
         auto cb = properties_changed_cb;
-        cb_mutex.unlock ();
-        try {
-            cb (iface_name, dbus_changed_props, invalidated_properties);
-        }catch (...) {
-            cb_mutex.lock ();
-            throw;
-        }
-        cb_mutex.lock ();
+        cb_lock.unlock ();
+        cb (iface_name, dbus_changed_props, invalidated_properties);
         return true;
     }
 
@@ -602,14 +584,14 @@ namespace ultrabus {
         const std::string iface = msg.interface ();
         const std::string signal = msg.name ();
 
-        const std::lock_guard lock (cb_mutex);
+        std::unique_lock cb_lock (cb_mutex);
 
         if (object_ifaces_added_cb &&
             iface==dbus_iface_object_manager &&
             signal=="InterfacesAdded" &&
             msg.path() == iface_add_om_root)
         {
-            if (on_iface_added(msg))
+            if (on_iface_added(msg, cb_lock))
                 return true;
         }
         else if (object_ifaces_removed_cb &&
@@ -617,14 +599,14 @@ namespace ultrabus {
                  signal=="InterfacesRemoved" &&
                  msg.path() == iface_del_om_root)
         {
-            if (on_iface_removed(msg))
+            if (on_iface_removed(msg, cb_lock))
                 return true;
         }
         else if (msg.path() != opath) {
             return false;
         }
         else if (properties_changed_cb && iface==DBUS_INTERFACE_PROPERTIES && signal=="PropertiesChanged") {
-            if (on_properties_changed(msg))
+            if (on_properties_changed(msg, cb_lock))
                 return true;
         }
 
@@ -646,14 +628,8 @@ namespace ultrabus {
         bool retval = false;
         if (entry != callbacks.end()) {
             auto cb = entry->second;
-            cb_mutex.unlock ();
-            try {
-                retval = cb (msg);
-            }catch (...) {
-                cb_mutex.lock ();
-                throw;
-            }
-            cb_mutex.lock ();
+            cb_lock.unlock ();
+            retval = cb (msg);
         }
         return retval;
     }

@@ -287,23 +287,24 @@ namespace ultrabus {
             return false;
 
         if (msg.name() == "InterfacesAdded") {
-            const std::lock_guard lock (iface_mutex);
+            std::unique_lock lock (iface_mutex);
             auto key = std::make_pair (msg.sender(), msg.path());
             auto entry = iface_added_callbacks.find (key);
             if (entry != iface_added_callbacks.end()) {
                 auto cb = entry->second;
-                handle_added_ifaces (msg, cb);
+                handle_added_ifaces (msg, lock, cb);
             }
         }
         else if (msg.name() == "InterfacesRemoved") {
-            const std::lock_guard lock (iface_mutex);
+            std::unique_lock lock (iface_mutex);
             auto key = std::make_pair (msg.sender(), msg.path());
             auto entry = iface_removed_callbacks.find (key);
             if (entry != iface_removed_callbacks.end()) {
                 auto cb = entry->second;
-                handle_removed_ifaces (msg, cb);
+                handle_removed_ifaces (msg, lock, cb);
             }
         }
+
         return false;
     }
 
@@ -313,6 +314,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void org_freedesktop_DBus_ObjectManager::handle_added_ifaces (
             message& msg,
+            std::unique_lock<std::mutex>& lock,
             iface_added_cb cb)
     {
         // message signature: "oa{sa{sv}}"
@@ -326,15 +328,8 @@ namespace ultrabus {
         for (auto& i : arg)
             ifaces_props.emplace (i.first.get(), std::move(i.second.cast<dbus_string_dict>()));
 
-        iface_mutex.unlock ();
-        try {
-            cb (opath.get(), ifaces_props);
-        }
-        catch (...) {
-            iface_mutex.lock ();
-            throw;
-        }
-        iface_mutex.lock ();
+        lock.unlock ();
+        cb (opath.get(), ifaces_props);
     }
 
 
@@ -343,6 +338,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void org_freedesktop_DBus_ObjectManager::handle_removed_ifaces (
             message& msg,
+            std::unique_lock<std::mutex>& lock,
             iface_removed_cb cb)
     {
         // message signature: "oas"
@@ -355,15 +351,8 @@ namespace ultrabus {
         for (auto& i : arg)
             ifaces.emplace (i.to_string());
 
-        iface_mutex.unlock ();
-        try {
-            cb (opath.get(), ifaces);
-        }
-        catch (...) {
-            iface_mutex.lock ();
-            throw;
-        }
-        iface_mutex.lock ();
+        lock.unlock ();
+        cb (opath.get(), ifaces);
     }
 
 

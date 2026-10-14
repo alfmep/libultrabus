@@ -1052,9 +1052,9 @@ namespace ultrabus {
         std::map<std::pair<std::string, std::string>, signal_cb_t> callbacks;
         std::string make_signal_match_rule (const std::string& interface,
                                             const std::string& signal);
-        bool on_iface_added (message& msg);
-        bool on_iface_removed (message& msg);
-        bool on_properties_changed (message& msg);
+        bool on_iface_added (message& msg, std::unique_lock<std::mutex>& cb_lock);
+        bool on_iface_removed (message& msg, std::unique_lock<std::mutex>& cb_lock);
+        bool on_properties_changed (message& msg, std::unique_lock<std::mutex>& cb_lock);
     };
 
 
