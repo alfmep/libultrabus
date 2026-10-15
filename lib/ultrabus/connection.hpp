@@ -82,7 +82,7 @@ namespace ultrabus {
         connection (connection&& other) = delete;
 
         /** Disconnect and join internal threads if the connection is open. */
-        ~connection ();
+        virtual ~connection ();
 
         connection& operator= (const connection&) = delete;
         connection& operator= (connection&& rhs) = delete;
@@ -110,7 +110,7 @@ namespace ultrabus {
          * Check whether the underlying D-Bus connection remains open.
          * @return <code>true</code> when connected.
          */
-        bool is_connected () const;
+        bool is_connected ();
 
         /**
          * Disconnect from the bus and join the internal I/O and dispatch
@@ -876,6 +876,12 @@ namespace ultrabus {
 
 
     private:
+        enum conn_state_t {
+            conn_state_disconnected = 0,
+            conn_state_connecting,
+            conn_state_connected,
+            conn_state_disconnecting,
+        };
         constexpr static const int max_epoll_events = 16;
         DBusConnection* ctx;
         DBusBusType conn_type;
@@ -883,6 +889,8 @@ namespace ultrabus {
         std::string unique_bus_name;
         std::thread io_thread;
         std::thread dispatch_thread;
+        conn_state_t conn_state;
+        mutable std::mutex conn_state_mutex;
 
         int timerfd;
         int pollfd;
@@ -909,6 +917,7 @@ namespace ultrabus {
         std::atomic_bool stop_io_thread;
         std::atomic_bool stop_dispatch_thread;
 
+        void disconnect_impl (std::unique_lock<std::mutex>& conn_state_lock);
         void start_io_handler ();
 
         void io_handler ();
