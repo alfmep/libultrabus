@@ -443,7 +443,7 @@ namespace ultrabus {
 
         auto entry = interfaces.find (iface);
         if (entry == interfaces.end()) {
-            message reply (msg, true, "se.ultramarin.error", "Get/Set property error - no such interface");
+            message reply (msg, true, DBUS_ERROR_FAILED, "Get/Set property error - no such interface");
             conn.send (reply);
             return true;
         }
@@ -454,7 +454,7 @@ namespace ultrabus {
         else
             ok = entry->second->set_property (prop_name, value);
         if (!ok) {
-            message reply (msg, true, "se.ultramarin.error", "Get/Set property error");
+            message reply (msg, true, DBUS_ERROR_FAILED, get_value ? "Error getting property":"Error setting property");
             conn.send (reply);
             return true;
         }
@@ -521,6 +521,12 @@ namespace ultrabus {
             if ( ! obj.is_registered())
                 continue;
             dbus_string_dict ifaces ("a{sv}");
+            if (obj.implements_introspectable)
+                ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
+            if (obj.implements_properties)
+                ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
+            if (obj.implements_objectmanager)
+                ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
             for (auto& if_entry : obj.interfaces)
                 ifaces.set (if_entry.first, if_entry.second->get_all_properties());
             objs.set (obj.path(), ifaces);
