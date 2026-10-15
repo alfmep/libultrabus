@@ -332,6 +332,7 @@ namespace ultrabus {
         : message_filter (*this, true),
           ctx (nullptr),
           conn_type (DBUS_BUS_SESSION),
+          conn_state (conn_state_disconnected),
           timerfd (invalid_file_desc),
           pollfd (invalid_file_desc),
           name_owner_changed_cb (nullptr),
@@ -360,7 +361,15 @@ namespace ultrabus {
                               const bool private_connection_arg,
                               const bool exit_on_disconnect)
     {
-        if (is_connected()) {
+        std::unique_lock conn_state_lock (conn_state_mutex);
+
+        if (conn_state == conn_state_connecting || conn_state == conn_state_disconnecting) {
+            // Currently connecting or disconnecting
+            errno = EBUSY;
+            return false;
+        }
+
+        if (conn_state == conn_state_connected) {
             if (conn_addr.empty() &&
                 type == conn_type &&
                 private_connection == private_connection_arg)
@@ -374,22 +383,25 @@ namespace ultrabus {
             }
         }
 
+        conn_state = conn_state_connecting;
+
         pollfd = epoll_create1 (EPOLL_CLOEXEC);
         if (pollfd < 0) {
             pollfd = invalid_file_desc;
+            conn_state = conn_state_disconnected;
             return false;
         }
         timerfd = timerfd_create (timer_clock_id, TFD_NONBLOCK|TFD_CLOEXEC);
         if (timerfd < 0) {
             timerfd = invalid_file_desc;
-            disconnect ();
+            disconnect_impl (conn_state_lock);
             return false;
         }else{
             struct epoll_event epev {};
             epev.data.fd = timerfd;
             epev.events = EPOLLIN;
             if (epoll_ctl(pollfd, EPOLL_CTL_ADD, timerfd, &epev) < 0) {
-                disconnect ();
+                disconnect_impl (conn_state_lock);
                 return false;
             }
         }
@@ -404,28 +416,31 @@ namespace ultrabus {
         else
             ctx = dbus_bus_get (type, nullptr);
         if (ctx == nullptr) {
-            disconnect ();
+            disconnect_impl (conn_state_lock);
             return false;
         }
 
         dbus_connection_set_exit_on_disconnect (ctx, (dbus_bool_t)exit_on_disconnect);
 
         if (!install_filter_handler()) {
-            disconnect ();
+            disconnect_impl (conn_state_lock);
             return false;
         }
 
         start_io_handler ();
-
+        conn_state = conn_state_connected;
         return true;
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool connection::is_connected () const
+    bool connection::is_connected ()
     {
-        return ctx!=nullptr && dbus_connection_get_is_connected(ctx)==TRUE;
+        std::unique_lock conn_state_lock (conn_state_mutex);
+        if (conn_state==conn_state_connected && !dbus_connection_get_is_connected(ctx))
+            disconnect_impl (conn_state_lock);
+        return conn_state == conn_state_connected;
     }
 
 
@@ -433,20 +448,44 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void connection::disconnect ()
     {
-        if (is_connected()) {
+        std::unique_lock conn_state_lock (conn_state_mutex);
+        if (conn_state == conn_state_connected)
+            disconnect_impl (conn_state_lock);
+    }
+
+
+    //--------------------------------------------------------------------------
+    // conn_state_mutex is locked
+    //--------------------------------------------------------------------------
+    void connection::disconnect_impl (std::unique_lock<std::mutex>& conn_state_lock)
+    {
+        if (conn_state == conn_state_connected)
             remove_filter_handler ();
-            if (private_connection)
-                dbus_connection_close (ctx);
-            dbus_connection_unref (ctx);
+
+        conn_state = conn_state_disconnecting;
+        conn_state_lock.unlock ();
+
+        if (ctx != nullptr) {
+            if (dbus_connection_get_is_connected(ctx)) {
+                pending_mutex.lock ();
+                for (auto& entry : pending_messages)
+                    dbus_pending_call_cancel (entry.first);
+                pending_mutex.unlock ();
+                dbus_connection_flush (ctx);
+                if (private_connection)
+                    dbus_connection_close (ctx);
+            }
+            dbus_connection_set_wakeup_main_function (ctx, nullptr, nullptr, nullptr);
+            dbus_connection_set_dispatch_status_function (ctx, nullptr, nullptr, nullptr);
+            dbus_connection_set_watch_functions (ctx, nullptr, nullptr, nullptr, nullptr, nullptr);
+            dbus_connection_set_timeout_functions (ctx, nullptr, nullptr, nullptr, nullptr, nullptr);
+            // dbus_connection_unref (ctx);
+            // ctx = nullptr;
         }
 
-        pending_mutex.lock ();
-        for (auto& entry : pending_messages) {
-            dbus_pending_call_cancel (entry.first);
+        for (auto& entry : pending_messages)
             dbus_pending_call_unref (entry.first);
-        }
         pending_messages.clear ();
-        pending_mutex.unlock ();
 
         stop_io_thread = true;
         if (io_thread.joinable())
@@ -456,6 +495,11 @@ namespace ultrabus {
         dispatch_cond.notify_one ();
         if (dispatch_thread.joinable())
             dispatch_thread.join ();
+
+        if (ctx) {
+            dbus_connection_unref (ctx);
+            ctx = nullptr;
+        }
 
         if (pollfd != invalid_file_desc)
             close (pollfd);
@@ -467,7 +511,6 @@ namespace ultrabus {
 
         timerfd = invalid_file_desc;
         pollfd = invalid_file_desc;
-        ctx = nullptr;
         conn_addr.clear ();
         unique_bus_name.clear ();
         name_owner_changed_cb = nullptr;
@@ -475,6 +518,8 @@ namespace ultrabus {
         name_acquired_cb = nullptr;
         conn_type = DBUS_BUS_SESSION;
         private_connection = false;
+
+        conn_state = conn_state_disconnected;
     }
 
 
@@ -484,6 +529,9 @@ namespace ultrabus {
                            std::function<void (ultrabus::message&)> reply_cb,
                            int timeout)
     {
+        if ( ! is_connected())
+            return false;
+
         const std::lock_guard lock (pending_mutex);
         DBusPendingCall* pending = nullptr;
 
@@ -508,7 +556,10 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool connection::send (message& msg, uint32_t& serial)
     {
-        return TRUE == dbus_connection_send(ctx, msg.handle(), &serial);
+        if ( ! is_connected())
+            return false;
+        else
+            return TRUE == dbus_connection_send(ctx, msg.handle(), &serial);
     }
 
 
@@ -545,9 +596,9 @@ namespace ultrabus {
                                                  uint32_t flags,
                                                  int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
             retvalue<uint32_t> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid bus name");
@@ -566,7 +617,7 @@ namespace ultrabus {
                                    std::function<void (retvalue<uint32_t>& retval)> callback,
                                    int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "RequestName");
         msg.append_args (bus_name, flags);
@@ -581,9 +632,9 @@ namespace ultrabus {
     retvalue<uint32_t> connection::release_name (const std::string& bus_name,
                                                  int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
             retvalue<uint32_t> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid bus name");
@@ -601,7 +652,7 @@ namespace ultrabus {
                                    std::function<void (retvalue<uint32_t>& retval)> callback,
                                    int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ReleaseName");
         msg.append_args (bus_name);
@@ -613,9 +664,9 @@ namespace ultrabus {
     retvalue<std::set<std::string>> connection::list_queued_owners (const std::string& bus_name,
                                                                     int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
             retvalue<std::set<std::string>> ret;
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid bus name");
@@ -636,7 +687,7 @@ namespace ultrabus {
             std::function<void (retvalue<std::set<std::string>>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListQueuedOwners");
         msg.append_args (bus_name);
@@ -657,7 +708,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     retvalue<std::set<std::string>> connection::list_names (int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return retvalue<std::set<std::string>> {-1, "Not connected"};
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListNames");
         auto reply = send_and_wait (msg, timeout);
@@ -671,7 +722,7 @@ namespace ultrabus {
             std::function<void (retvalue<std::set<std::string>>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListNames");
         if (callback == nullptr) {
@@ -691,7 +742,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     retvalue<std::set<std::string>> connection::list_activatable_names (int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return retvalue<std::set<std::string>> {-1, "Not connected"};
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListActivatableNames");
         auto reply = send_and_wait (msg, timeout);
@@ -705,7 +756,7 @@ namespace ultrabus {
             std::function<void (retvalue<std::set<std::string>>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListActivatableNames");
         if (callback == nullptr) {
@@ -726,9 +777,9 @@ namespace ultrabus {
     retvalue<bool> connection::name_has_owner (const std::string& bus_name,
                                                int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
             retvalue<bool> ret (false);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid bus name");
@@ -746,7 +797,7 @@ namespace ultrabus {
                                      std::function<void (retvalue<bool>& retval)> callback,
                                      int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "NameHasOwner");
         msg.append_args (bus_name);
@@ -760,9 +811,9 @@ namespace ultrabus {
                                                           uint32_t flags,
                                                           int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
             retvalue<uint32_t> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid service name");
@@ -782,7 +833,7 @@ namespace ultrabus {
             std::function<void (retvalue<uint32_t>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "StartServiceByName");
         msg.append_args (service, flags);
@@ -796,7 +847,7 @@ namespace ultrabus {
             const std::map<std::string, std::string>& env,
             int timeout)
     {
-        if (ctx==nullptr) {
+        if (!is_connected()) {
             retvalue<bool> ret (false);
             ret.err (-1, "Not connected");
             return ret;
@@ -817,7 +868,7 @@ namespace ultrabus {
             std::function<void (retvalue<bool>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "UpdateActivationEnvironment");
         dbus_dict<dbus_string> dict (DBUS_TYPE_STRING);
@@ -833,9 +884,9 @@ namespace ultrabus {
     retvalue<std::string> connection::get_name_owner (const std::string& bus_name,
                                                       int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr)) {
             retvalue<std::string> ret;
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid bus name");
@@ -853,7 +904,7 @@ namespace ultrabus {
                                      std::function<void (retvalue<std::string>& retval)> callback,
                                      int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(bus_name.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetNameOwner");
         msg.append_args (bus_name);
@@ -866,9 +917,9 @@ namespace ultrabus {
     retvalue<uint32_t> connection::get_connection_unix_user (const std::string& service,
                                                              int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
             retvalue<uint32_t> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid service name");
@@ -887,7 +938,7 @@ namespace ultrabus {
             std::function<void (retvalue<uint32_t>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetConnectionUnixUser");
         msg.append_args (service);
@@ -900,9 +951,9 @@ namespace ultrabus {
     retvalue<uint32_t> connection::get_connection_unix_process_id (const std::string& service,
                                                                    int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
             retvalue<uint32_t> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid service name");
@@ -921,7 +972,7 @@ namespace ultrabus {
             std::function<void (retvalue<uint32_t>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetConnectionUnixProcessID");
         msg.append_args (service);
@@ -936,9 +987,9 @@ namespace ultrabus {
             const std::string& service,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr)) {
             retvalue<dbus_dict<dbus_string>> ret (0);
-            if (ctx==nullptr)
+            if (!is_connected())
                 ret.err (-1, "Not connected");
             else
                 ret.err (-1, "Invalid service name");
@@ -958,7 +1009,7 @@ namespace ultrabus {
             std::function<void (retvalue<dbus_dict<dbus_string>>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
+        if (!is_connected() || FALSE==dbus_validate_bus_name(service.c_str(), nullptr))
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetConnectionCredentials");
         msg.append_args (service);
@@ -979,7 +1030,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     retvalue<std::string> connection::get_id (int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return retvalue<std::string> {-1, "Not connected"};
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetId");
         return sync_call_method<std::string> (*this, msg, timeout);
@@ -992,7 +1043,7 @@ namespace ultrabus {
             std::function<void (retvalue<std::string>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "GetId");
         return async_call_method<std::string> (*this, msg, callback, timeout);
@@ -1004,7 +1055,7 @@ namespace ultrabus {
     retvalue<bool> connection::become_monitor (const std::list<std::string>& rules,
                                                int timeout)
     {
-        if (ctx==nullptr) {
+        if (!is_connected()) {
             retvalue<bool> ret (false);
             ret.err (-1, "Not connected");
             return ret;
@@ -1025,7 +1076,7 @@ namespace ultrabus {
             std::function<void (retvalue<bool>& retval)> callback,
             int timeout)
     {
-        if (ctx==nullptr)
+        if (!is_connected())
             return false;
         message msg (DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_DBUS, "BecomeMonitor");
         dbus_array array ("s");
@@ -1143,7 +1194,6 @@ namespace ultrabus {
                                                   static_wakeup_main_cb,
                                                   this,
                                                   nullptr);
-
         dbus_connection_set_dispatch_status_function (ctx,
                                                       static_dispatch_status_cb,
                                                       this,
@@ -1163,7 +1213,6 @@ namespace ultrabus {
 
         stop_dispatch_thread = false;
         dispatch_thread = std::thread ([this](){msg_dispatcher();});
-        get_id ();
     }
 
 
@@ -1292,14 +1341,6 @@ namespace ultrabus {
         unsigned dbus_events = 0;
         const uint32_t triggered_events = io_events.events & (event_mask | EPOLLHUP | EPOLLERR);
 
-        // TRACE_DBUS_CONNECTION (
-        //         "Check watch %08lx, fd: %d, epoll events: %s, watched events: %s, triggered events: %s",
-        //         (unsigned long)dbus_watch_obj,
-        //         fd,
-        //         epoll_events_to_string(io_events.events).c_str(),
-        //         epoll_events_to_string(event_mask).c_str(),
-        //         epoll_events_to_string(triggered_events).c_str());
-
         if (triggered_events == 0)
             return;
 
@@ -1308,15 +1349,9 @@ namespace ultrabus {
             return;
 
         if (dbus_watch_get_enabled(dbus_watch_obj)) {
-            // TRACE_DBUS_CONNECTION ("Call dbus_watch_handle(%08lx, %s)",
-            //                        (unsigned long)dbus_watch_obj,
-            //                        dbus_watch_flags_to_string(dbus_events).c_str());
             watcher_mutex.unlock ();
             dbus_watch_handle (dbus_watch_obj, dbus_events);
             watcher_mutex.lock ();
-            // TRACE_DBUS_CONNECTION ("dbus_watch_handle(%08lx) done", (unsigned long)dbus_watch_obj);
-        }else{
-            ; // TRACE_DBUS_CONNECTION ("Watch not enabled");
         }
         io_events.events &= ~triggered_events; // un-mark the handled events
     }
@@ -1466,12 +1501,6 @@ namespace ultrabus {
         if (dbus_watch_get_enabled(watch))
             watch_flags = dbus_watch_get_flags (watch);
 
-        // TRACE_DBUS_CONNECTION ("Add watch (%08lx), fd: %d, enabled: %s, events: %s",
-        //                        (unsigned long)watch,
-        //                        fd,
-        //                        (dbus_watch_get_enabled(watch)?"1":"0"),
-        //                        dbus_watch_flags_to_string(dbus_watch_get_flags(watch)).c_str());
-
         uint32_t fd_events = 0;
         struct epoll_event ev {};
         ev.data.fd = fd;
@@ -1489,7 +1518,6 @@ namespace ultrabus {
             const int res = epoll_ctl (pollfd, EPOLL_CTL_ADD, fd, &ev);
             if (res < 0) {
                 fd_map.erase (fd);
-                // DBG_DBUS_CONNECTION ("epoll_ctl (add) failed: %s", strerror(errno));
                 return false;
             }
         }else{
@@ -1500,7 +1528,6 @@ namespace ultrabus {
             ev.events = fd_events;
             if (epoll_ctl(pollfd, EPOLL_CTL_MOD, fd, &ev) < 0) {
                 i->second.erase (watch);
-                // DBG_DBUS_CONNECTION ("epoll_ctl (mod) failed: %s", strerror(errno));
                 return false;
             }
         }
@@ -1516,10 +1543,6 @@ namespace ultrabus {
         const std::lock_guard lock (watcher_mutex);
 
         const int fd = dbus_watch_get_unix_fd (watch);
-
-        // TRACE_DBUS_CONNECTION ("Remove watch (%08lx), fd: %d, events: %s",
-        //                        (unsigned long)watch, fd,
-        //                        dbus_watch_flags_to_string(dbus_watch_get_flags(watch)).c_str());
 
         auto entry = fd_map.find (fd);
         if (entry == fd_map.end())
@@ -1552,11 +1575,6 @@ namespace ultrabus {
         if (dbus_watch_get_enabled(watch))
             watch_flags = dbus_watch_get_flags (watch);
 
-        // TRACE_DBUS_CONNECTION ("Toggle watch (%08lx), fd: %d, enabled: %s, events: %s",
-        //                        (unsigned long)watch,
-        //                        fd,
-        //                        (dbus_watch_get_enabled(watch)?"1":"0"),
-        //                        dbus_watch_flags_to_string(dbus_watch_get_flags(watch)).c_str());
         uint32_t fd_events = 0;
         struct epoll_event ev {};
         ev.data.fd = fd;
@@ -1592,8 +1610,6 @@ namespace ultrabus {
         unsigned repeat = dbus_timeout_get_interval (timeout);
         const bool enabled = dbus_timeout_get_enabled (timeout);
 
-        // TRACE_DBUS_CONNECTION ("Add timer %08lx, repeat: %u, enabled: %d",
-        //                        (unsigned long)timeout, repeat, (enabled?1:0));
         if (!enabled)
             return true;
 
@@ -1613,7 +1629,6 @@ namespace ultrabus {
         const bool activate_timer = pos == timers.begin();
 
         // Create the timer entry
-        //timers.emplace (pos, std::make_tuple(timeout, abs, repeat));
         timers.emplace (pos, timeout, abs, repeat);
 
         // Activate timerfd if needed
@@ -1656,14 +1671,10 @@ namespace ultrabus {
         timers.erase (pos);
 
         if (timers.empty()) {
-            if (timerfd_settime(timerfd, 0, &it, nullptr)) {
-                ; // DBG_DBUS_CONNECTION ("timerfd_settime failed: %s", strerror(errno));
-            }
+            timerfd_settime (timerfd, 0, &it, nullptr);
         }else if (update_timer) {
             it.it_value = std::get<idx_abs_time> (timers.front());
-            if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &it, nullptr)) {
-                ; //DBG_DBUS_CONNECTION ("timerfd_settime failed: %s", strerror(errno));
-            }
+            timerfd_settime (timerfd, TFD_TIMER_ABSTIME, &it, nullptr);
         }
     }
 
