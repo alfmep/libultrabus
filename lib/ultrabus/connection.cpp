@@ -21,6 +21,8 @@
 #include <ultrabus/dbus_basic_types.hpp>
 #include <ultrabus/dbus_array.hpp>
 #include <ultrabus/dbus_dict.hpp>
+#include <condition_variable>
+#include <mutex>
 #include <cstring>
 #include <cerrno>
 #include <ctime>
@@ -567,25 +569,33 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     message connection::send_and_wait (message& msg, int timeout)
     {
-        DBusMessage* result {};
-        DBusError err;
-        dbus_error_init (&err);
-
-        result = dbus_connection_send_with_reply_and_block (ctx,
-                                                            msg.handle(),
-                                                            timeout,
-                                                            &err);
-        if (result == FALSE) {
+        if ( ! is_connected()) {
             if (msg.serial() == 0)
                 dbus_message_set_serial (msg.handle(), 1);
-            auto error_reply = msg.make_reply (true, err.name, err.message);
-            dbus_error_free (&err);
-            return error_reply;
+            return msg.make_reply (true, DBUS_ERROR_DISCONNECTED, "Not connected");
         }
-        dbus_error_free (&err);
 
-        message reply (result);
-        dbus_message_unref (reply.handle()); // ref count increased in message constructor
+        message reply;
+        std::condition_variable cond;
+        std::mutex cond_mutex;
+        bool got_reply {false};
+
+        bool is_sent = send (msg,
+                             [&reply, &cond, &got_reply](message& resp){
+                                 reply = std::move (resp);
+                                 got_reply = true;
+                                 cond.notify_one ();
+                             },
+                             timeout);
+        if (!is_sent) {
+            if (msg.serial() == 0)
+                dbus_message_set_serial (msg.handle(), 1);
+            return msg.make_reply (true, DBUS_ERROR_FAILED, "Error sending DBus message");
+        }
+        while (!got_reply) {
+            std::unique_lock lock (cond_mutex);
+            cond.wait (lock);
+        }
         return reply;
     }
 
