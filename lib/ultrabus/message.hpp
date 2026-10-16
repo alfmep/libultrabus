@@ -451,7 +451,7 @@ namespace ultrabus {
         std::vector<std::unique_ptr<dbus_type>> arguments (size_t max_args=0) const;
 
         /**
-         * Create and return a reply message.
+         * Create a reply to a method call message.
          * @param set_error Set to <code>true</code> if this is an error response.
          * @param error_name The error name when <code>set_error</code> is true.
          * @param error_message The error description.
@@ -462,6 +462,14 @@ namespace ultrabus {
         message make_reply (const bool set_error,
                             const std::string& error_name="",
                             const std::string& error_message="") const;
+
+        /**
+         * Create a reply to a method call message.
+         * @return A reply message.
+         * @throws std::invalid_argument if this message has no serial number.
+         * @throws std::bad_alloc if libdbus cannot allocate the reply.
+         */
+        message make_reply () const {return make_reply(false,"","");}
 
         /**
          * Return the underlying DBus message handle.
