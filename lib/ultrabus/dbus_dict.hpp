@@ -67,7 +67,7 @@ namespace ultrabus {
          * @return <code>true</code> if the key and value signature are compatible;
          *         otherwise <code>false</code> and the dictionary is unchanged.
          */
-        virtual bool set (const dbus_type& key, const dbus_type& value) = 0;
+        virtual bool set_value (const dbus_type& key, const dbus_type& value) = 0;
 
         /**
          * Set a value for a specific key.
@@ -77,7 +77,7 @@ namespace ultrabus {
          * @return <code>true</code> if the key and value signature are compatible;
          *         otherwise <code>false</code> and the dictionary is unchanged.
          */
-        virtual bool set (const dbus_type& key, dbus_type&& value) = 0;
+        virtual bool set_value (const dbus_type& key, dbus_type&& value) = 0;
 
         /**
          * Set a value for a specific key by moving a pointer to the value.
@@ -88,7 +88,8 @@ namespace ultrabus {
          * @return <code>true</code> if the value signature is compatible; otherwise
          *         <code>false</code> and the dictionary and pointer is unchanged.
          */
-        virtual bool set (const dbus_type& key, std::unique_ptr<dbus_type>&& value) = 0;
+        virtual bool set_value (const dbus_type& key, std::unique_ptr<dbus_type>&& value) = 0;
+
 
         /**
          * Get a copy of the value for a specific key.
@@ -111,7 +112,7 @@ namespace ultrabus {
          *       an iterator returned by <code>find()</code>
          *       if a reference to the value is preferred.
          */
-        virtual bool get (const dbus_type& key, dbus_type& dest) const = 0;
+        virtual bool get_value (const dbus_basic_base& key, dbus_type& dest) const = 0;
 
 
     protected:
@@ -553,7 +554,8 @@ namespace ultrabus {
                 return false;
             return true;
         }
-        virtual bool set (const dbus_type& key, const dbus_type& value) {
+
+        virtual bool set_value (const dbus_type& key, const dbus_type& value) {
             if (key.type_code() != key_type_code()) {
                 if (key.type_code() == DBUS_TYPE_VARIANT) {
                     const auto& vkey = key.cast<dbus_variant>().get ();
@@ -583,7 +585,8 @@ namespace ultrabus {
                 return false;
             return true;
         }
-        virtual bool set (const dbus_type& key, dbus_type&& value) {
+
+        virtual bool set_value (const dbus_type& key, dbus_type&& value) {
             if (key.type_code() != key_type_code()) {
                 if (key.type_code() == DBUS_TYPE_VARIANT) {
                     const auto& vkey = key.cast<dbus_variant>().get ();
@@ -615,7 +618,8 @@ namespace ultrabus {
                 return false;
             return true;
         }
-        virtual bool set (const dbus_type& key, std::unique_ptr<dbus_type>&& value) {
+
+        virtual bool set_value (const dbus_type& key, std::unique_ptr<dbus_type>&& value) {
             if (key.type_code() != key_type_code()) {
                 if (key.type_code() == DBUS_TYPE_VARIANT) {
                     const auto& vkey = key.cast<dbus_variant>().get ();
@@ -835,7 +839,8 @@ namespace ultrabus {
             }
             return got_value;
         }
-        virtual bool get (const dbus_type& key, dbus_type& dest) const {
+
+        virtual bool get_value (const dbus_basic_base& key, dbus_type& dest) const {
             if (key.type_code() != key_type_code()) {
                 if (key.type_code() == DBUS_TYPE_VARIANT) {
                     const auto& vkey = key.cast<dbus_variant>().get ();
