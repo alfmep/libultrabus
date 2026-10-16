@@ -128,6 +128,9 @@ namespace ultrabus {
          *         timeout.
          */
         message send_and_wait (message& msg, int timeout=DBUS_TIMEOUT_USE_DEFAULT);
+        message send_and_wait (message&& msg, int timeout=DBUS_TIMEOUT_USE_DEFAULT) {
+            return send_and_wait (msg, timeout);
+        }
 
         /**
          * Send a message on the bus.
@@ -152,6 +155,7 @@ namespace ultrabus {
          *         <code>false</code> if the message couldn't be queued for sending.
          */
         bool send (message& msg) {uint32_t s; return send(msg, s);}
+        bool send (message&& msg) {uint32_t s; return send(msg, s);}
 
         /**
          * Send a message on the bus without waiting for a message reply.
@@ -162,6 +166,7 @@ namespace ultrabus {
          *         <code>false</code> if the message couldn't be queued for sending.
          */
         bool send (message& msg, uint32_t& serial);
+        bool send (message&& msg, uint32_t& serial) {return send (msg, serial);}
 
         /**
          * Request a name DBus connection name.
