@@ -43,7 +43,6 @@ namespace ultrabus {
                                                       dbus_variant& value)>;
         using set_property_cb_t = std::function<bool (const std::string& name,
                                                       const dbus_variant& value)>;
-        //interface (const std::string& interface_name, object& object_arg);
         interface (const std::string& interface_name);
         virtual ~interface ();
 
@@ -75,10 +74,19 @@ namespace ultrabus {
 
         bool add_property (const std::string& name,
                            const std::string& signature,
-                           get_property_cb_t get_callback,
-                           set_property_cb_t set_callback);
+                           const bool readable,
+                           const bool writable,
+                           get_property_cb_t get_callback=nullptr,
+                           set_property_cb_t set_callback=nullptr);
+        bool add_property (const std::string& name,
+                           const dbus_type& initial_value,
+                           const bool readable,
+                           const bool writable,
+                           get_property_cb_t get_callback=nullptr,
+                           set_property_cb_t set_callback=nullptr);
+
         void remove_property (const std::string& name, bool emit_signal=false);
-        bool get_property (const std::string& name, dbus_variant& value);
+        bool get_property (const std::string& name, dbus_variant& value) const;
         bool set_property (const std::string& name, const dbus_variant& value);
         dbus_string_dict get_all_properties () const;
 
@@ -116,29 +124,40 @@ namespace ultrabus {
 
     private:
         friend class object;
-        void set_owner (object* obj_arg) {obj = obj_arg;}
 
         //                               in_sign      out_sign     callback
         using method_desc_t = std::tuple<std::string, std::string, iface_method_cb_t>;
 
-        //                                 sign         get callback       set callback
-        using property_desc_t = std::tuple<std::string, get_property_cb_t, set_property_cb_t>;
-
         //                                  name         signature
         using signal_arg_desc_t = std::pair<std::string, std::string>;
 
+        struct property_t {
+            dbus_variant value;
+            std::string sign;
+            get_property_cb_t get_cb;
+            set_property_cb_t set_cb;
+            bool readable;
+            bool writable;
+            property_t () : value("v"), readable{false}, writable{false} {}
+        };
 
         std::string if_name; // The name of this interface
-        //object& obj;         // Object implementing this interface
         object* obj;         // Object implementing this interface
-
         std::map<std::string, method_desc_t> methods;
         std::map<std::string, std::string> xml_methods;
-        std::map<std::string, property_desc_t> properties;
+        std::map<std::string, property_t> properties;
 
         //       signal name            sig sign     arguments
         std::map<std::string, std::pair<std::string, std::vector<signal_arg_desc_t>>> signals;
 
+        void set_owner (object* obj_arg) {obj = obj_arg;}
+        bool add_property_impl (const std::string& name,
+                                const std::string& signature,
+                                const dbus_type* initial_value,
+                                const bool readable,
+                                const bool writable,
+                                get_property_cb_t get_callback,
+                                set_property_cb_t set_callback);
         bool emit_signal_impl (message signal);
     };
 

@@ -103,18 +103,14 @@ namespace ultrabus {
 
         // Append properties
         for (auto& entry : properties) {
-            auto& name = entry.first;
-            auto& signature = std::get<0> (entry.second);
-            auto& get_cb = std::get<1> (entry.second);
-            auto& set_cb = std::get<2> (entry.second);
             xml.append (R"(<property name=")");
-            xml.append (name);
+            xml.append (entry.first);
             xml.append (R"(" type=")");
-            xml.append (signature);
+            xml.append (entry.second.sign);
             xml.append (R"(" access=")");
-            if (get_cb)
+            if (entry.second.readable)
                 xml.append ("read");
-            if (set_cb)
+            if (entry.second.writable)
                 xml.append ("write");
             xml.append (R"("/>)");
         }
@@ -259,26 +255,70 @@ namespace ultrabus {
         return true;
     }
 
+
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     bool interface::add_property (const std::string& name,
                                   const std::string& signature,
+                                  const bool readable,
+                                  const bool writable,
                                   get_property_cb_t get_callback,
                                   set_property_cb_t set_callback)
+    {
+        return add_property_impl (name, signature, nullptr, readable,
+                                  writable, get_callback, set_callback);
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::add_property (const std::string& name,
+                                  const dbus_type& initial_value,
+                                  const bool readable,
+                                  const bool writable,
+                                  get_property_cb_t get_callback,
+                                  set_property_cb_t set_callback)
+    {
+        return add_property_impl (name, "", &initial_value, readable,
+                                  writable, get_callback, set_callback);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::add_property_impl (const std::string& name,
+                                       const std::string& signature,
+                                       const dbus_type* initial_value,
+                                       const bool readable,
+                                       const bool writable,
+                                       get_property_cb_t get_callback,
+                                       set_property_cb_t set_callback)
     {
         if (name.empty() || dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
         }
-        if (signature.empty() || dbus_signature_validate_single(signature.c_str(), nullptr) != TRUE) {
+        if (initial_value==nullptr &&
+            (signature.empty() || dbus_signature_validate_single(signature.c_str(), nullptr) != TRUE))
+        {
             return false;
         }
-        if (!get_callback && !set_callback)
+        if (!readable && !writable)
             return false;
         if (properties.contains(name))
             return false;
 
-        properties.emplace (name, std::make_tuple(signature, get_callback, set_callback));
+        property_t p;
+        if (initial_value) {
+            p.sign = initial_value->signature ();
+            p.value = *initial_value;
+        }else{
+            p.sign = signature;
+        }
+        p.readable = readable;
+        p.writable = writable;
+        p.get_cb = get_callback;
+        p.set_cb = set_callback;
 
+        properties.emplace (name, p);
         return true;
     }
 
@@ -296,14 +336,23 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::get_property (const std::string& name, dbus_variant& value)
+    bool interface::get_property (const std::string& name, dbus_variant& value) const
     {
         auto i = properties.find (name);
         if (i == properties.end()) {
             return false;
         }
-        auto& get_cb = std::get<1> (i->second);
-        return get_cb ? get_cb(name, value) : false;
+        const auto& p = i->second;
+        if (!p.readable) {
+            // Property is write-only
+            return false;
+        }
+        if (p.get_cb) {
+            return p.get_cb (name, value);
+        }else{
+            value = p.value;
+            return true;
+        }
     }
 
     //--------------------------------------------------------------------------
@@ -314,14 +363,22 @@ namespace ultrabus {
         if (i == properties.end())
             return false;
 
-        auto& signature = std::get<0> (i->second);
-        auto& set_cb = std::get<2> (i->second);
-        if (value.get().signature() != signature)
+        auto& p = i->second;
+        if (!p.readable) {
+            // Property is read-only
             return false;
-        if (!set_cb)
+        }
+        if (value.get().signature() != p.sign  &&  p.sign != "v") {
+            // Setting a value of wrong type
             return false;
+        }
 
-        return set_cb (name, value);
+        if (p.set_cb) {
+            return p.set_cb (name, value);
+        }else{
+            p.value = value;
+            return true;
+        }
     }
 
     //--------------------------------------------------------------------------
@@ -330,12 +387,18 @@ namespace ultrabus {
     {
         dbus_string_dict props (DBUS_TYPE_VARIANT);
         for (auto& entry : properties) {
-            dbus_variant value;
-            auto& name = entry.first;
-            auto& get_cb = std::get<1> (entry.second);
-            if (get_cb) {
-                if (get_cb(name, value))
+            const auto& name = entry.first;
+            const auto& p = entry.second;
+
+            if (!p.readable)
+                continue;
+
+            if (p.get_cb) {
+                dbus_variant value;
+                if (p.get_cb(name, value))
                     props.set (name, std::move(value));
+            }else{
+                props.set (name, p.value);
             }
         }
         return props;
