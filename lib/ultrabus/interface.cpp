@@ -50,11 +50,9 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    interface::interface (const std::string& interface_name,
-                          object& object_arg)
+    interface::interface (const std::string& interface_name)
         : if_name (interface_name),
-          obj (object_arg),
-          conn (object_arg.get_connection())
+          obj (nullptr)
     {
         if (dbus_validate_interface(if_name.c_str(), nullptr) != TRUE)
             throw std::invalid_argument ("Invalid interface name");
@@ -128,41 +126,41 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_method (const std::string& name,
-                                     iface_method_cb_t callback)
+    bool interface::add_method (const std::string& name,
+                                iface_method_cb_t callback)
     {
         std::vector<std::string> in_params;
-        return register_method (name, in_params, "", callback);
+        return add_method (name, in_params, "", callback);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_method (const std::string& name,
-                                     const std::string& out_param,
-                                     iface_method_cb_t callback)
+    bool interface::add_method (const std::string& name,
+                                const std::string& out_param,
+                                iface_method_cb_t callback)
     {
         std::vector<std::string> in_params;
-        return register_method (name, in_params, out_param, callback);
+        return add_method (name, in_params, out_param, callback);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_method (const std::string& name,
-                                     const std::string& in_param,
-                                     const std::string& out_param,
-                                     iface_method_cb_t callback)
+    bool interface::add_method (const std::string& name,
+                                const std::string& in_param,
+                                const std::string& out_param,
+                                iface_method_cb_t callback)
     {
         std::vector<std::string> in_params;
         in_params.emplace_back (in_param);
-        return register_method (name, in_params, out_param, callback);
+        return add_method (name, in_params, out_param, callback);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_method (const std::string& name,
-                                     const std::vector<std::string>& in_params,
-                                     const std::string& out_param,
-                                     iface_method_cb_t callback)
+    bool interface::add_method (const std::string& name,
+                                const std::vector<std::string>& in_params,
+                                const std::string& out_param,
+                                iface_method_cb_t callback)
     {
         if (!callback) {
             return false;
@@ -236,7 +234,7 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::unregister_method (const std::string& name)
+    void interface::remove_method (const std::string& name)
     {
         methods.erase (name);
         xml_methods.erase (name);
@@ -263,10 +261,10 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_property (const std::string& name,
-                                       const std::string& signature,
-                                       get_property_cb_t get_callback,
-                                       set_property_cb_t set_callback)
+    bool interface::add_property (const std::string& name,
+                                  const std::string& signature,
+                                  get_property_cb_t get_callback,
+                                  set_property_cb_t set_callback)
     {
         if (name.empty() || dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
@@ -286,7 +284,7 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::unregister_property (const std::string& name, bool emit_signal)
+    void interface::remove_property (const std::string& name, bool emit_signal)
     {
         auto i = properties.find (name);
         if (i != properties.end()) {
@@ -349,7 +347,7 @@ namespace ultrabus {
     bool interface::emit_property_changed (const std::string& property_name,
                                            const dbus_variant& value)
     {
-        if ( ! obj.is_registered())
+        if (!obj || !obj->is_enabled())
             return false;
         if (property_name.empty()) // Sanity check
             return false;
@@ -358,9 +356,9 @@ namespace ultrabus {
         dbus_array invalid_props (DBUS_TYPE_STRING);
         props.set (property_name, value);
 
-        message sig (obj.path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
+        message sig (obj->path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
         sig.append_args (property_name, std::move(props), std::move(invalid_props));
-        return conn.send (sig);
+        return obj->get_connection().send (sig);
     }
 
 
@@ -379,7 +377,7 @@ namespace ultrabus {
     bool interface::emit_properties_changed (const std::vector<std::string>& property_names,
                                              const std::vector<std::string>& invalid_names)
     {
-        if ( ! obj.is_registered())
+        if (!obj || !obj->is_enabled())
             return false;
 
         dbus_string_dict props (DBUS_TYPE_VARIANT);
@@ -397,31 +395,31 @@ namespace ultrabus {
         if (props.empty() && invalid_props.empty())
             return false;
 
-        message sig (obj.path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
+        message sig (obj->path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
         sig.append_args (if_name, std::move(props), std::move(invalid_props));
-        return conn.send (sig);
+        return obj->get_connection().send (sig);
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_signal (const std::string& name)
+    bool interface::add_signal (const std::string& name)
     {
         std::vector<std::string> arguments;
-        return register_signal (name, arguments);
+        return add_signal (name, arguments);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_signal (const std::string& name, const std::string& argument)
+    bool interface::add_signal (const std::string& name, const std::string& argument)
     {
         std::vector<std::string> arguments {argument};
-        return register_signal (name, arguments);
+        return add_signal (name, arguments);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool interface::register_signal (const std::string& name, const std::vector<std::string>& arguments)
+    bool interface::add_signal (const std::string& name, const std::vector<std::string>& arguments)
     {
         if (dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
@@ -447,7 +445,7 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::unregister_signal (const std::string& name)
+    void interface::remove_signal (const std::string& name)
     {
         signals.erase (name);
     }
@@ -457,7 +455,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::emit_signal_impl (message signal)
     {
-        if ( ! obj.is_registered())
+        if (!obj || !obj->is_enabled())
             return false;
 
         auto i = signals.find (signal.name());
@@ -468,7 +466,7 @@ namespace ultrabus {
         if (signal.signature() != signal_signature)
             return false; // Argument(s) not same as registered signal
 
-        return conn.send (signal);
+        return obj->get_connection().send (signal);
     }
 
 

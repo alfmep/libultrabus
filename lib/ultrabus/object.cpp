@@ -116,7 +116,7 @@ namespace ultrabus {
           implements_introspectable {implement_if_introspectable},
           implements_properties {implement_if_properties},
           implements_objectmanager {implement_if_objectmanager},
-          registered {false}
+          enabled {false}
     {
         if (dbus_validate_path(object_path.c_str(), nullptr) != TRUE)
             throw std::invalid_argument ("Invalid object path");
@@ -127,21 +127,26 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     object::~object ()
     {
+        nodes.clear ();
+        interfaces.clear ();
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool object::register_object (bool register_nodes)
+    bool object::enable (bool enable_sub_nodes)
     {
-        registered = register_object_path (opath.get(), nullptr);
-        if ( ! registered)
-            return false;
-
+        if ( ! enabled) {
+            enabled = register_object_path (opath.get(), nullptr);
+            if ( ! enabled)
+                return false;
+        }
         bool retval = true;
-        for (const auto& node : nodes) {
-            if ( ! node.second->register_object(true))
-                retval = false;
+        if (enable_sub_nodes) {
+            for (const auto& node : nodes) {
+                if ( ! node.second->enable(true))
+                    retval = false;
+            }
         }
         return retval;
     }
@@ -149,24 +154,12 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void object::unregister_object ()
+    void object::disable ()
     {
         for (const auto& node : nodes)
-            node.second->unregister_object ();
+            node.second->disable ();
         unregister_object_path (opath.get());
-        registered = false;
-    }
-
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool object::register_interface (std::shared_ptr<interface> iface)
-    {
-        if (!iface)
-            return false;
-        interfaces.emplace (iface->name(), iface);
-
-        return true;
+        enabled = false;
     }
 
 
@@ -205,26 +198,34 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool object::remove_node (const std::string& sub_path, bool emit_signal)
+    bool object::erase_node (const std::string& sub_path, bool emit_signal)
     {
         std::string node_path = get_node_path (opath, sub_path);
         auto i = nodes.find (node_path);
         if (i == nodes.end())
             return false;
 
+        object& sub_node = *i->second;
+
         bool send_signal = emit_signal &&
             implements_objectmanager &&
-            is_registered() &&
-            i->second->is_registered();
+            is_enabled() &&
+            sub_node.is_enabled();
 
-        dbus_opath removed_path = i->second->path ();
+        dbus_opath removed_path = sub_node.path ();
         dbus_array removed_ifaces (DBUS_TYPE_STRING);
         if (send_signal) {
-            for (auto& if_entry : i->second->interfaces)
+            for (auto& if_entry : sub_node.interfaces)
                 removed_ifaces.push_back (if_entry.first);
+            if (sub_node.implements_introspectable)
+                removed_ifaces.push_back ("org.freedesktop.DBus.Introspectable");
+            if (sub_node.implements_properties)
+                removed_ifaces.push_back ("org.freedesktop.DBus.Properties");
+            if (sub_node.implements_objectmanager)
+                removed_ifaces.push_back ("org.freedesktop.DBus.ObjectManager");
         }
 
-        i->second->unregister_object ();
+        sub_node.disable ();
         nodes.erase (i);
 
         if (send_signal) {
@@ -238,14 +239,42 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    bool object::add_interface (std::shared_ptr<interface> iface)
+    {
+        if (!iface || interfaces.contains(iface->name()) || iface->owner()!=nullptr)
+            return false;
+
+        iface->set_owner (this);
+        interfaces.emplace (iface->name(), iface);
+        return true;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool object::remove_interface (const std::string& interface_name)
+    {
+        auto entry = interfaces.find (interface_name);
+        if (entry == interfaces.end())
+            return false;
+
+        auto iface = entry->second;
+        interfaces.erase (entry);
+        iface->set_owner (nullptr);
+        return true;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     bool object::emit_interfaces_added (const dbus_opath& object_path)
     {
-        if ( !implements_objectmanager || !is_registered())
+        if ( !implements_objectmanager || !is_enabled())
             return false;
 
         std::string node_path = get_node_path (opath, object_path);
         auto i = nodes.find (node_path);
-        if (i == nodes.end()  ||  i->second->is_registered()==false)
+        if (i == nodes.end()  ||  i->second->is_enabled()==false)
             return false;
 
         dbus_opath added_path = i->second->path ();
@@ -274,12 +303,12 @@ namespace ultrabus {
     bool object::emit_interfaces_added (const dbus_opath& object_path,
                                         const std::vector<std::string>& interface_names)
     {
-        if ( !implements_objectmanager || !is_registered())
+        if ( !implements_objectmanager || !is_enabled())
             return false;
 
         std::string node_path = get_node_path (opath, object_path);
         auto i = nodes.find (node_path);
-        if (i == nodes.end()  ||  i->second->is_registered()==false)
+        if (i == nodes.end()  ||  i->second->is_enabled()==false)
             return false;
 
         auto& node = *i->second;
@@ -315,7 +344,7 @@ namespace ultrabus {
     bool object::emit_interfaces_removed (const dbus_opath& object_path,
                                           const std::vector<std::string>& interface_names)
     {
-        if ( !implements_objectmanager || !is_registered())
+        if ( !implements_objectmanager || !is_enabled())
             return false;
 
         dbus_array removed_ifaces (DBUS_TYPE_STRING);
@@ -406,7 +435,7 @@ namespace ultrabus {
         // Add nodes info
         std::set<std::string> node_names;
         for (const auto& node : nodes) {
-            if ( ! node.second->is_registered())
+            if ( ! node.second->is_enabled())
                 continue;
             auto& full_name = node.first;
             node_names.emplace (full_name.substr(0, full_name.find_first_of('/')));
@@ -518,7 +547,7 @@ namespace ultrabus {
 
         for (auto& entry : nodes) {
             auto& obj = *entry.second;
-            if ( ! obj.is_registered())
+            if ( ! obj.is_enabled())
                 continue;
             dbus_string_dict ifaces ("a{sv}");
             if (obj.implements_introspectable)

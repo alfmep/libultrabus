@@ -47,22 +47,23 @@ namespace ultrabus {
                 const bool implement_if_objectmanager=false);
         virtual ~object ();
 
-        bool register_object (bool register_nodes=true);
-        void unregister_object ();
+        bool enable (bool enable_sub_nodes=true);
+        void disable ();
 
-        bool is_registered () const {return registered;}
+        bool is_enabled () const {return enabled;}
 
         const dbus_opath& path () const {return opath;}
         connection& get_connection () {return conn;}
-
-        bool register_interface (std::shared_ptr<interface> iface);
 
         std::shared_ptr<object> create_node (const std::string& sub_path,
                                              const bool implement_if_introspectable=true,
                                              const bool implement_if_properties=false,
                                              const bool implement_if_objectmanager=false);
-        bool remove_node (const std::string& sub_path, bool emit_signal=true);
+        bool erase_node (const std::string& sub_path, bool emit_signal=true);
 
+
+        bool add_interface (std::shared_ptr<interface> iface);
+        bool remove_interface (const std::string& interface_name);
 
         bool emit_interface_added (const dbus_opath& object_path,
                                    const std::string& interface_name);
@@ -95,7 +96,7 @@ namespace ultrabus {
         bool implements_introspectable;
         bool implements_properties;
         bool implements_objectmanager;
-        bool registered;
+        bool enabled;
     };
 
 

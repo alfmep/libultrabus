@@ -43,40 +43,41 @@ namespace ultrabus {
                                                       dbus_variant& value)>;
         using set_property_cb_t = std::function<bool (const std::string& name,
                                                       const dbus_variant& value)>;
-        interface (const std::string& interface_name, object& object_arg);
+        //interface (const std::string& interface_name, object& object_arg);
+        interface (const std::string& interface_name);
         virtual ~interface ();
 
         const std::string name () const {return if_name;}
         const std::string to_xml () const;
 
-        bool register_method (const std::string& name,
-                              iface_method_cb_t callback);
+        bool add_method (const std::string& name,
+                         iface_method_cb_t callback);
 
         // out_param:  "[name:]signature"
-        bool register_method (const std::string& name,
-                              const std::string& out_param,
-                              iface_method_cb_t callback);
+        bool add_method (const std::string& name,
+                         const std::string& out_param,
+                         iface_method_cb_t callback);
 
         // in_param:   "[name:]signature"
         // out_param:  "[name:]signature"
-        bool register_method (const std::string& name,
-                              const std::string& in_param,
-                              const std::string& out_param,
-                              iface_method_cb_t callback);
+        bool add_method (const std::string& name,
+                         const std::string& in_param,
+                         const std::string& out_param,
+                         iface_method_cb_t callback);
 
-        bool register_method (const std::string& name,
-                              const std::vector<std::string>& in_params,
-                              const std::string& out_param,
-                              iface_method_cb_t callback);
+        bool add_method (const std::string& name,
+                         const std::vector<std::string>& in_params,
+                         const std::string& out_param,
+                         iface_method_cb_t callback);
 
-        void unregister_method (const std::string& name);
+        void remove_method (const std::string& name);
         bool on_method (message& msg);
 
-        bool register_property (const std::string& name,
-                                const std::string& signature,
-                                get_property_cb_t get_callback,
-                                set_property_cb_t set_callback);
-        void unregister_property (const std::string& name, bool emit_signal=false);
+        bool add_property (const std::string& name,
+                           const std::string& signature,
+                           get_property_cb_t get_callback,
+                           set_property_cb_t set_callback);
+        void remove_property (const std::string& name, bool emit_signal=false);
         bool get_property (const std::string& name, dbus_variant& value);
         bool set_property (const std::string& name, const dbus_variant& value);
         dbus_string_dict get_all_properties () const;
@@ -86,32 +87,37 @@ namespace ultrabus {
         bool emit_properties_changed (const std::vector<std::string>& property_names,
                                       const std::vector<std::string>& invalid_names={});
 
-        bool register_signal (const std::string& name);
+        bool add_signal (const std::string& name);
         // argument:  "[name:]signature"
-        bool register_signal (const std::string& name, const std::string& argument);
+        bool add_signal (const std::string& name, const std::string& argument);
         // argument:  "[name:]signature"
-        bool register_signal (const std::string& name, const std::vector<std::string>& arguments);
-        void unregister_signal (const std::string& name);
+        bool add_signal (const std::string& name, const std::vector<std::string>& arguments);
+        void remove_signal (const std::string& name);
 
 
         bool emit_signal (const std::string& name) {
-            if (dbus_validate_member(name.c_str(), nullptr) != TRUE)
+            if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
                 return false;
-            message signal (obj.path(), if_name, name);
+            message signal (obj->path(), if_name, name);
             return emit_signal_impl (signal);
         }
 
         template<typename T, typename... Targs>
         bool emit_signal (const std::string& name, const T& arg, const Targs&... args) {
-            if (dbus_validate_member(name.c_str(), nullptr) != TRUE)
+            if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
                 return false;
-            message signal (obj.path(), if_name, name);
+            message signal (obj->path(), if_name, name);
             signal.append_args (arg, args...);
             return emit_signal_impl (signal);
         }
 
+        object* owner () {return obj;}
+
 
     private:
+        friend class object;
+        void set_owner (object* obj_arg) {obj = obj_arg;}
+
         //                               in_sign      out_sign     callback
         using method_desc_t = std::tuple<std::string, std::string, iface_method_cb_t>;
 
@@ -123,8 +129,8 @@ namespace ultrabus {
 
 
         std::string if_name; // The name of this interface
-        object& obj;         // Object implementing this interface
-        connection& conn;
+        //object& obj;         // Object implementing this interface
+        object* obj;         // Object implementing this interface
 
         std::map<std::string, method_desc_t> methods;
         std::map<std::string, std::string> xml_methods;
