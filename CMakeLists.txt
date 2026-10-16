@@ -54,20 +54,16 @@ include (GNUInstallDirs)
 # Common compiler flags
 #
 set (gcc_like_cxx "$<COMPILE_LANG_AND_ID:CXX,ARMClang,AppleClang,Clang,GNU,LCC>")
-add_compile_options (
-    "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-pipe;-Wall>>"
-)
+add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-pipe;-Wall>>")
 if (CMAKE_BUILD_TYPE MATCHES "^[Dd]ebug")
-    # Build test applications
+    # Build test applications and add flag -Og for GCC et al.
     set (BUILD_TESTING ON)
-
-    # If build type is debug, add flag -Og for GCC et al.
-    add_compile_options (
-        "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Og;-Werror;-fsanitize=address>>"
-    )
-    add_link_options (
-        "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-fsanitize=address;-static-libasan>>"
-    )
+    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Og;-Werror>>")
+elseif (CMAKE_BUILD_TYPE MATCHES "^[Mm]em[Dd]ebug")
+    # Build test applications, add flag -Og for GCC et al. and enable address sanitizer
+    set (BUILD_TESTING ON)
+    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Og;-Werror;-fsanitize=address>>")
+    add_link_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-fsanitize=address;-static-libasan>>")
 elseif (CMAKE_BUILD_TYPE STREQUAL "")
     # Default build type, optimize using -O2
     add_compile_options (
