@@ -335,50 +335,55 @@ namespace ultrabus {
     }
 
     //--------------------------------------------------------------------------
+    //  0: Success
+    // -1: Property not found
+    // -2: Property is write-only
+    // -3: Error getting property value
     //--------------------------------------------------------------------------
-    bool interface::get_property (const std::string& name, dbus_variant& value) const
-    {
-        auto i = properties.find (name);
-        if (i == properties.end()) {
-            return false;
-        }
-        const auto& p = i->second;
-        if (!p.readable) {
-            // Property is write-only
-            return false;
-        }
-        if (p.get_cb) {
-            return p.get_cb (name, value);
-        }else{
-            value = p.value;
-            return true;
-        }
-    }
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool interface::set_property (const std::string& name, const dbus_variant& value)
+    int interface::get_property (const std::string& name, dbus_variant& value) const
     {
         auto i = properties.find (name);
         if (i == properties.end())
-            return false;
+            return -1;
+
+        const auto& p = i->second;
+        if (!p.readable)
+            return -2; // Property is write-only
+
+        bool ok {true};
+        if (p.get_cb)
+            ok = p.get_cb (name, value);
+        else
+            value = p.value;
+        return ok ? 0 : -3;
+    }
+
+    //--------------------------------------------------------------------------
+    //  0: Success
+    // -1: Property not found
+    // -2: Property is read-only
+    // -3: Wrong value type
+    // -4: Error setting property value
+    //--------------------------------------------------------------------------
+    int interface::set_property (const std::string& name, const dbus_variant& value)
+    {
+        auto i = properties.find (name);
+        if (i == properties.end())
+            return -1;
 
         auto& p = i->second;
-        if (!p.readable) {
-            // Property is read-only
-            return false;
-        }
-        if (value.get().signature() != p.sign  &&  p.sign != "v") {
-            // Setting a value of wrong type
-            return false;
-        }
+        if (!p.writable)
+            return -2; // Property is read-only
 
-        if (p.set_cb) {
-            return p.set_cb (name, value);
-        }else{
+        if (value.get().signature() != p.sign  &&  p.sign != "v")
+            return -3; // Setting a value of wrong type
+
+        bool ok {true};
+        if (p.set_cb)
+            ok = p.set_cb (name, value);
+        else
             p.value = value;
-            return true;
-        }
+        return ok ? 0 : -4;
     }
 
     //--------------------------------------------------------------------------

@@ -477,22 +477,42 @@ namespace ultrabus {
             return true;
         }
 
-        bool ok {false};
+        message reply;
+        int result {};
         if (get_value)
-            ok = entry->second->get_property (prop_name, value);
+            result = entry->second->get_property (prop_name, value);
         else
-            ok = entry->second->set_property (prop_name, value);
-        if (!ok) {
-            message reply (msg, true, DBUS_ERROR_FAILED, get_value ? "Error getting property":"Error setting property");
-            conn.send (reply);
-            return true;
+            result = entry->second->set_property (prop_name, value);
+
+        switch (result) {
+        case 0:
+            reply = msg.make_reply ();
+            reply.append_args (value);
+            break;
+        case -1:
+            reply = msg.make_reply (true, DBUS_ERROR_UNKNOWN_PROPERTY, "No such property");
+            break;
+        case -2:
+            if (get_value)
+                reply = msg.make_reply (true, "org.freedesktop.DBus.Error.PropertyWriteOnly", "Property is write-only");
+            else
+                reply = msg.make_reply (true, DBUS_ERROR_PROPERTY_READ_ONLY, "Property is read-only");
+            break;
+        case -3:
+            if (!get_value) {
+                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Setting property value of wrong type");
+                break;
+            }
+        case -4:
+        default:
+            if (get_value)
+                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Error getting property value");
+            else
+                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Error setting property value");
+            break;
         }
 
-        message reply (msg, false);
-        if (get_value)
-            reply.append_args (value);
         conn.send (reply);
-
         return true;
     }
 

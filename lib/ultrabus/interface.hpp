@@ -86,8 +86,8 @@ namespace ultrabus {
                            set_property_cb_t set_callback=nullptr);
 
         void remove_property (const std::string& name, bool emit_signal=false);
-        bool get_property (const std::string& name, dbus_variant& value) const;
-        bool set_property (const std::string& name, const dbus_variant& value);
+        int get_property (const std::string& name, dbus_variant& value) const;
+        int set_property (const std::string& name, const dbus_variant& value);
         dbus_string_dict get_all_properties () const;
 
         bool emit_property_changed (const std::string& property_name, const dbus_variant& value);
