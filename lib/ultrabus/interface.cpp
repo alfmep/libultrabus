@@ -19,7 +19,6 @@
 #include <ultrabus/interface.hpp>
 #include <ultrabus/dbus_array.hpp>
 
-
 namespace {
 
     //--------------------------------------------------------------------------
@@ -265,7 +264,7 @@ namespace ultrabus {
                                   get_property_cb_t get_callback,
                                   set_property_cb_t set_callback)
     {
-        return add_property_impl (name, signature, nullptr, readable,
+        return add_property_impl (name, signature, nullptr, false, readable,
                                   writable, get_callback, set_callback);
     }
 
@@ -278,7 +277,20 @@ namespace ultrabus {
                                   get_property_cb_t get_callback,
                                   set_property_cb_t set_callback)
     {
-        return add_property_impl (name, "", &initial_value, readable,
+        return add_property_impl (name, "", &initial_value, false, readable,
+                                  writable, get_callback, set_callback);
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::add_property (const std::string& name,
+                                  dbus_type&& initial_value,
+                                  const bool readable,
+                                  const bool writable,
+                                  get_property_cb_t get_callback,
+                                  set_property_cb_t set_callback)
+    {
+        return add_property_impl (name, "", &initial_value, true, readable,
                                   writable, get_callback, set_callback);
     }
 
@@ -288,6 +300,7 @@ namespace ultrabus {
     bool interface::add_property_impl (const std::string& name,
                                        const std::string& signature,
                                        const dbus_type* initial_value,
+                                       const bool move_initial_value,
                                        const bool readable,
                                        const bool writable,
                                        get_property_cb_t get_callback,
@@ -309,7 +322,10 @@ namespace ultrabus {
         property_t p;
         if (initial_value) {
             p.sign = initial_value->signature ();
-            p.value = *initial_value;
+            if (move_initial_value)
+                p.value = std::move (*initial_value);
+            else
+                p.value = *initial_value;
         }else{
             p.sign = signature;
         }

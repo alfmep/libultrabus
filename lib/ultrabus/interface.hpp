@@ -84,6 +84,12 @@ namespace ultrabus {
                            const bool writable,
                            get_property_cb_t get_callback=nullptr,
                            set_property_cb_t set_callback=nullptr);
+        bool add_property (const std::string& name,
+                           dbus_type&& initial_value,
+                           const bool readable,
+                           const bool writable,
+                           get_property_cb_t get_callback=nullptr,
+                           set_property_cb_t set_callback=nullptr);
 
         void remove_property (const std::string& name, bool emit_signal=false);
         int get_property (const std::string& name, dbus_variant& value) const;
@@ -154,6 +160,7 @@ namespace ultrabus {
         bool add_property_impl (const std::string& name,
                                 const std::string& signature,
                                 const dbus_type* initial_value,
+                                const bool move_initial_value,
                                 const bool readable,
                                 const bool writable,
                                 get_property_cb_t get_callback,
