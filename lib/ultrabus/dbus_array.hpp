@@ -61,17 +61,17 @@ namespace ultrabus {
                 return *this;
             }
             constexpr const_iterator& operator++ () {++iter; return *this;}
-            constexpr const_iterator operator++ (int) {const_iterator i(iter); ++iter;return i;}
+            constexpr const_iterator operator++ (int) {return const_iterator(iter++);}
             constexpr const_iterator operator+ (difference_type n) {return const_iterator(iter + n);}
             friend const_iterator operator+ (difference_type n, const_iterator i);
             constexpr const_iterator& operator+= (int n) {iter += n; return *this;}
             constexpr const_iterator& operator-- () {--iter; return *this;}
-            constexpr const_iterator operator-- (int) {const_iterator i(iter); --iter;return i;}
+            constexpr const_iterator operator-- (int) {return const_iterator(iter--);}
             constexpr const_iterator operator- (difference_type n) {return const_iterator(iter - n);}
             constexpr difference_type operator- (const_iterator i) {return iter - i.iter;}
             constexpr const_iterator& operator-= (int n) {iter -= n; return *this;}
             inline const dbus_type& operator*() {return *(*iter);}
-            inline dbus_type* const operator->() {return iter->get();}
+            inline dbus_type* operator->() {return iter->get();}
             inline const dbus_type& operator[] (size_t pos) {return *iter[pos];}
             constexpr bool operator== (const const_iterator& rhs) const {return iter==rhs.iter;}
             constexpr auto operator<=> (const const_iterator& rhs) const {return iter <=> rhs.iter;}
@@ -99,12 +99,12 @@ namespace ultrabus {
                 return *this;
             }
             constexpr iterator& operator++ () {++iter; return *this;}
-            constexpr iterator operator++ (int) {iterator i(iter); ++iter;return i;}
+            constexpr iterator operator++ (int) {return iterator(iter++);}
             constexpr iterator operator+ (int n) {return iterator(iter + n);}
             friend iterator operator+ (difference_type n, iterator i);
             constexpr iterator& operator+= (int n) {iter += n; return *this;}
             constexpr iterator& operator-- () {--iter; return *this;}
-            constexpr iterator operator-- (int) {iterator i(iter); --iter;return i;}
+            constexpr iterator operator-- (int) {return iterator(iter--);}
             constexpr iterator operator- (int n) {return iterator(iter - n);}
             constexpr difference_type operator- (iterator i) {return iter - i.iter;}
             constexpr iterator& operator-= (int n) {iter -= n; return *this;}

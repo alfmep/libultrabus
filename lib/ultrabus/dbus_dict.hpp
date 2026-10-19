@@ -45,7 +45,7 @@ namespace ultrabus {
         virtual bool is_dict () const {return true;}
 
         /** Returns the DBus type code for dictionary keys. */
-        virtual const int key_type_code () const = 0;
+        virtual int key_type_code () const = 0;
 
         /** @brief Return string view of the dictionary value signature. */
         virtual const std::string_view value_signature () const = 0;
@@ -376,7 +376,7 @@ namespace ultrabus {
         /**
          * Returns the DBus type code of the key type.
          */
-        virtual const int key_type_code () const {
+        virtual int key_type_code () const {
             return key_type_t::make_type_code ();
         }
 

@@ -504,7 +504,7 @@ namespace ultrabus {
         DBusMessage* ctx;
 
         void append_dbus_type_arg (DBusMessageIter* iter, const dbus_type& arg);
-        inline void append_args_impl (DBusMessageIter* iter) {}
+        inline void append_args_impl (DBusMessageIter*) {}
 
         template<typename... Targs>
         void append_args_impl (DBusMessageIter* iter, const dbus_type& arg, const Targs&... args) {
@@ -568,7 +568,7 @@ namespace ultrabus {
 
 
 
-        inline bool get_args_impl (DBusMessageIter* iter, bool strict_signature) {return true;}
+        inline bool get_args_impl (DBusMessageIter* /*iter*/, bool /*strict_signature*/) {return true;}
 
         template<any_dbus_type T, any_dbus_or_basic_cpp_type... Targs>
         bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) {

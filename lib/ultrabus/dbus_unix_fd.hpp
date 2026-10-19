@@ -45,7 +45,9 @@ namespace ultrabus {
          * Copy constructor.
          * @param other The value to copy.
          */
-        dbus_unix_fd (const dbus_unix_fd& other) {
+        dbus_unix_fd (const dbus_unix_fd& other)
+            : dbus_basic<unix_fd_t>(other)
+        {
             sig = make_signature ();
             basic_value = other.basic_value;
         }

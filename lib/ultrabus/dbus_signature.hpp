@@ -41,7 +41,9 @@ namespace ultrabus {
          * Copy contructor.
          * @param other Value to copy.
          */
-        constexpr dbus_signature (const dbus_signature& other) {
+        constexpr dbus_signature (const dbus_signature& other)
+            : dbus_basic<std::string>(other)
+        {
             sig = make_signature ();
             basic_value = other.basic_value;
         }

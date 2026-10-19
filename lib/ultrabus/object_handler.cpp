@@ -126,7 +126,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     // Static method
     //--------------------------------------------------------------------------
-    void object_handler::dbus_on_unregister (DBusConnection* connection, void* user_data)
+    void object_handler::dbus_on_unregister (DBusConnection* /*connection*/, void* /*user_data*/)
     {
         //auto* self = static_cast<object_handler*> (user_data);
     }
@@ -135,7 +135,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     // Static method
     //--------------------------------------------------------------------------
-    DBusHandlerResult object_handler::dbus_on_message (DBusConnection* connection,
+    DBusHandlerResult object_handler::dbus_on_message (DBusConnection* /*connection*/,
                                                        DBusMessage* dbus_msg,
                                                        void* user_data)
     {

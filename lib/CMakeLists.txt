@@ -40,6 +40,12 @@ target_include_directories (ultrabus
     $<INSTALL_INTERFACE:include>
 )
 
+if (CMAKE_BUILD_TYPE MATCHES "^[Dd]ebug")
+    target_compile_options (ultrabus PRIVATE "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+elseif (CMAKE_BUILD_TYPE MATCHES "^[Mm]em[Dd]ebug")
+    target_compile_options (ultrabus PRIVATE "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+endif()
+
 # Set link libraries
 #
 target_link_libraries (ultrabus

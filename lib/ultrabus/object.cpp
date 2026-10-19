@@ -503,6 +503,7 @@ namespace ultrabus {
                 reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Setting property value of wrong type");
                 break;
             }
+            __attribute__((fallthrough)); // Intentional fallthrough when get_value==true
         case -4:
         default:
             if (get_value)
