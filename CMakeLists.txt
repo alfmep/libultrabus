@@ -33,7 +33,7 @@ project (libultrabus
 option (BUILD_SHARED_LIBS "Build shared library." ON)
 option (BUILD_DOC "Generate documentation (if doxygen is found)." ON)
 option (BUILD_TESTING "Build test applications." OFF)
-#option (BUILD_EXAMPLES "Build example applications." ON)
+option (BUILD_EXAMPLES "Build example applications." ON)
 
 #
 # Dependencies
@@ -84,12 +84,12 @@ if (BUILD_TESTING)
     add_subdirectory (test)
 endif()
 
-# #
-# # Example applications
-# #
-# if (BUILD_EXAMPLES)
-#     add_subdirectory (examples)
-# endif()
+#
+# Example applications
+#
+if (BUILD_EXAMPLES)
+    add_subdirectory (examples)
+endif()
 
 #
 # Doxygen documentation
@@ -158,8 +158,8 @@ if (BUILD_TESTING)
 else()
     message (STATUS "    Build test applications.............. no")
 endif()
-# if (BUILD_EXAMPLES)
-#     message (STATUS "    Build example applications........... yes")
-# else()
-#     message (STATUS "    Build example applications........... no")
-# endif()
+if (BUILD_EXAMPLES)
+    message (STATUS "    Build example applications........... yes")
+else()
+    message (STATUS "    Build example applications........... no")
+endif()
