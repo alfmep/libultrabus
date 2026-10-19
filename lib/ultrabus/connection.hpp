@@ -119,6 +119,15 @@ namespace ultrabus {
          */
         void disconnect ();
 
+
+        /**
+         * Get the unique name of this connection.
+         * @return Returns the unique name of this connection,
+         *         of an empty string if not connected.
+         */
+        std::string unique_name ();
+
+
         /**
          * Send a message on the bus and wait for a reply.
          * @param msg The DBus message to send.
@@ -732,6 +741,15 @@ namespace ultrabus {
          *       rel="noopener noreferrer" target="_blank">D-Bus Specification - Message Bus Messages: GetId</a>
          */
         retvalue<std::string> get_id (int timeout=DBUS_TIMEOUT_USE_DEFAULT);
+
+
+        /**
+         * Return the id of the server we are connected to.
+         * @return The ID of the server we are connected to.
+         *         Or an empty string if not connected.
+         */
+        std::string get_server_id ();
+
 
         /**
          * Asynchronous call to get the unique ID of the bus.
