@@ -364,7 +364,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::on_method_call (message& msg)
     {
-        static std::set<std::string> if_properties_method_names {{"Get", "Set", "GetAll"}};
+        static std::set<std::string> if_properties_method_names {{"Get", "GetAll", "Set"}};
         bool handled {false};
 
         // Check standard interfaces

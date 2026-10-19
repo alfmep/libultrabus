@@ -49,6 +49,14 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    std::shared_ptr<interface> interface::create (const std::string& interface_name)
+    {
+        std::shared_ptr<interface> iface (new interface(interface_name));
+        return iface;
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     interface::interface (const std::string& interface_name)
         : if_name (interface_name),
           obj (nullptr)
@@ -237,7 +245,7 @@ namespace ultrabus {
     bool interface::on_method (message& msg)
     {
         auto entry = methods.find (msg.name());
-        if (entry == methods.end())
+        if (entry == methods.end() || !obj)
             return false;
         const auto& in_signature = std::get<0> (entry->second);
         //const auto& out_signature = std::get<1> (entry->second);
@@ -246,7 +254,7 @@ namespace ultrabus {
         if (in_signature != msg.signature())
             return false;
 
-        std::get<2>(entry->second) (msg);
+        std::get<2>(entry->second) (obj->get_connection(), msg);
         // method (msg);
         return true;
     }

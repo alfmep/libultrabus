@@ -25,6 +25,7 @@
 #include <ultrabus/dbus_variant.hpp>
 #include <ultrabus/dbus_dict.hpp>
 #include <string>
+#include <memory>
 #include <functional>
 #include <tuple>
 #include <map>
@@ -38,12 +39,14 @@ namespace ultrabus {
      */
     class interface {
     public:
-        using iface_method_cb_t = std::function<void (message& msg)>;
+        using iface_method_cb_t = std::function<void (connection& conn, message& msg)>;
         using get_property_cb_t = std::function<bool (const std::string& name,
                                                       dbus_variant& value)>;
         using set_property_cb_t = std::function<bool (const std::string& name,
                                                       const dbus_variant& value)>;
-        interface (const std::string& interface_name);
+
+        static std::shared_ptr<interface> create (const std::string& interface_name);
+
         virtual ~interface ();
 
         const std::string name () const {return if_name;}
@@ -121,6 +124,10 @@ namespace ultrabus {
         }
 
         object* owner () {return obj;}
+
+
+    protected:
+        interface (const std::string& interface_name);
 
 
     private:
