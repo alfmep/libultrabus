@@ -451,25 +451,33 @@ namespace ultrabus {
         std::vector<std::unique_ptr<dbus_type>> arguments (size_t max_args=0) const;
 
         /**
-         * Create a reply to a method call message.
-         * @param set_error Set to <code>true</code> if this is an error response.
-         * @param error_name The error name when <code>set_error</code> is true.
-         * @param error_message The error description.
-         * @return A reply message.
+         * Create a success reply to a method call message.
+         * @return A reply message indicating a successful method call.
          * @throws std::invalid_argument if this message has no serial number.
          * @throws std::bad_alloc if libdbus cannot allocate the reply.
          */
-        message make_reply (const bool set_error,
-                            const std::string& error_name="",
-                            const std::string& error_message="") const;
+        message make_reply () const {return make_reply("","");}
 
         /**
          * Create a reply to a method call message.
+         * This method can create both success replies and error replies.
+         * If argument <code>error_name</code> is empty, then it will create
+         * a success reply. And if argument <code>error_name</code> is not
+         * empty, then an error reply will be created.<br/>
+         * Note that even if argument <code>error_message</code> is not an
+         * empty string, a success reply will still be created if argument
+         * <code>error_name</code> is an empty string.
+         * @param error_name Optional error name. An empty string will
+         *                   create a success reply. A non-empty string
+         *                   will create an error reply.
+         * @param error_message Error description used if error_name is
+         *                      not an empty string.
          * @return A reply message.
          * @throws std::invalid_argument if this message has no serial number.
          * @throws std::bad_alloc if libdbus cannot allocate the reply.
          */
-        message make_reply () const {return make_reply(false,"","");}
+        message make_reply (const std::string& error_name,
+                            const std::string& error_message="") const;
 
         /**
          * Return the underlying DBus message handle.

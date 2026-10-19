@@ -683,12 +683,13 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    message message::make_reply (const bool set_error,
-                                 const std::string& error_name,
+    message message::make_reply (const std::string& error_name,
                                  const std::string& error_message) const
     {
-        //return message (*this, set_error, error_name, error_message);
-        return {*this, set_error, error_name, error_message};
+        if (error_name.empty())
+            return {*this, false, "", ""};
+        else
+            return {*this, true, error_name, error_message};
     }
 
 

@@ -490,26 +490,26 @@ namespace ultrabus {
             reply.append_args (value);
             break;
         case -1:
-            reply = msg.make_reply (true, DBUS_ERROR_UNKNOWN_PROPERTY, "No such property");
+            reply = msg.make_reply (DBUS_ERROR_UNKNOWN_PROPERTY, "No such property");
             break;
         case -2:
             if (get_value)
-                reply = msg.make_reply (true, "org.freedesktop.DBus.Error.PropertyWriteOnly", "Property is write-only");
+                reply = msg.make_reply ("org.freedesktop.DBus.Error.PropertyWriteOnly", "Property is write-only");
             else
-                reply = msg.make_reply (true, DBUS_ERROR_PROPERTY_READ_ONLY, "Property is read-only");
+                reply = msg.make_reply (DBUS_ERROR_PROPERTY_READ_ONLY, "Property is read-only");
             break;
         case -3:
             if (!get_value) {
-                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Setting property value of wrong type");
+                reply = msg.make_reply (DBUS_ERROR_FAILED, "Setting property value of wrong type");
                 break;
             }
             __attribute__((fallthrough)); // Intentional fallthrough when get_value==true
         case -4:
         default:
             if (get_value)
-                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Error getting property value");
+                reply = msg.make_reply (DBUS_ERROR_FAILED, "Error getting property value");
             else
-                reply = msg.make_reply (true, DBUS_ERROR_FAILED, "Error setting property value");
+                reply = msg.make_reply (DBUS_ERROR_FAILED, "Error setting property value");
             break;
         }
 

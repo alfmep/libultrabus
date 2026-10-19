@@ -583,7 +583,7 @@ namespace ultrabus {
         if ( ! is_connected()) {
             if (msg.serial() == 0)
                 dbus_message_set_serial (msg.handle(), 1);
-            return msg.make_reply (true, DBUS_ERROR_DISCONNECTED, "Not connected");
+            return msg.make_reply (DBUS_ERROR_DISCONNECTED, "Not connected");
         }
 
         message reply;
@@ -601,7 +601,7 @@ namespace ultrabus {
         if (!is_sent) {
             if (msg.serial() == 0)
                 dbus_message_set_serial (msg.handle(), 1);
-            return msg.make_reply (true, DBUS_ERROR_FAILED, "Error sending DBus message");
+            return msg.make_reply (DBUS_ERROR_FAILED, "Error sending DBus message");
         }
         while (!got_reply) {
             std::unique_lock lock (cond_mutex);

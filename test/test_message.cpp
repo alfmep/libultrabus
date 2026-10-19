@@ -224,11 +224,11 @@ static void test_make_reply ()
     message mc ("org.example.Dest", "/p", "org.example.I", "M");
     dbus_message_set_serial (mc.handle(), 55);
 
-    message reply = mc.make_reply (false);
+    message reply = mc.make_reply ();
     CHECK (reply.is_method_return());
     CHECK (reply.reply_serial() == 55);
 
-    message err = mc.make_reply (true, "org.example.Error", "bad things happened");
+    message err = mc.make_reply ("org.example.Error", "bad things happened");
     CHECK (err.is_error());
     CHECK (err.error_name() == "org.example.Error");
     CHECK (err.error_msg() == "bad things happened");
@@ -285,10 +285,10 @@ static void test_type_predicates ()
     CHECK (sig.type() == DBUS_MESSAGE_TYPE_SIGNAL);
 
     dbus_message_set_serial (mc.handle(), 1);
-    message ret = mc.make_reply (false);
+    message ret = mc.make_reply ();
     CHECK (ret.type() == DBUS_MESSAGE_TYPE_METHOD_RETURN);
 
-    message err = mc.make_reply (true, "org.example.Err", "desc");
+    message err = mc.make_reply ("org.example.Err", "desc");
     CHECK (err.type() == DBUS_MESSAGE_TYPE_ERROR);
 
     message inv (nullptr);
@@ -337,14 +337,14 @@ static void test_error_accessors ()
 
     message mc ("org.example.Dest", "/p", "org.example.I", "M");
     dbus_message_set_serial (mc.handle(), 1);
-    message err = mc.make_reply (true, "org.example.Err", "original");
+    message err = mc.make_reply ("org.example.Err", "original");
     CHECK (err.error_name() == "org.example.Err");
 
     err.error_name ("org.example.Changed");
     CHECK (err.error_name() == "org.example.Changed");
 
     // error_name() setter is a no-op on a non-error message.
-    message ret = mc.make_reply (false);
+    message ret = mc.make_reply ();
     ret.error_name ("org.example.ShouldBeIgnored");
     CHECK (ret.error_name() == "");
 }
@@ -365,7 +365,7 @@ static void test_sender_serial_want_reply ()
     dbus_message_set_serial (m.handle(), 77);
     CHECK (m.serial() == 77);
 
-    message reply = m.make_reply (false);
+    message reply = m.make_reply ();
     CHECK (reply.reply_serial() == 77);
     CHECK (reply.serial() == 0);                 // reply itself not yet "sent"
 
@@ -652,12 +652,12 @@ static void test_to_json ()
     CHECK (sig_json.find (R"json("type":"signal")json") != std::string::npos);
 
     dbus_message_set_serial (m.handle(), 9);
-    message reply = m.make_reply (false);
+    message reply = m.make_reply ();
     std::string reply_json = reply.to_json ();
     CHECK (reply_json.find (R"json("type":"method_return")json") != std::string::npos);
     CHECK (reply_json.find (R"json("reply_serial":9)json") != std::string::npos);
 
-    message err = m.make_reply (true, "org.example.Err", "desc");
+    message err = m.make_reply ("org.example.Err", "desc");
     std::string err_json = err.to_json ();
     CHECK (err_json.find (R"json("type":"error")json") != std::string::npos);
 
