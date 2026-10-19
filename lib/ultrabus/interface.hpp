@@ -52,11 +52,6 @@ namespace ultrabus {
         bool add_method (const std::string& name,
                          iface_method_cb_t callback);
 
-        // out_param:  "[name:]signature"
-        bool add_method (const std::string& name,
-                         const std::string& out_param,
-                         iface_method_cb_t callback);
-
         // in_param:   "[name:]signature"
         // out_param:  "[name:]signature"
         bool add_method (const std::string& name,

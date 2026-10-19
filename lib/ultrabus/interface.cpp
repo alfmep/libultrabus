@@ -131,22 +131,13 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     bool interface::add_method (const std::string& name,
-                                const std::string& out_param,
-                                iface_method_cb_t callback)
-    {
-        std::vector<std::string> in_params;
-        return add_method (name, in_params, out_param, callback);
-    }
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool interface::add_method (const std::string& name,
                                 const std::string& in_param,
                                 const std::string& out_param,
                                 iface_method_cb_t callback)
     {
         std::vector<std::string> in_params;
-        in_params.emplace_back (in_param);
+        if ( ! in_param.empty())
+            in_params.emplace_back (in_param);
         return add_method (name, in_params, out_param, callback);
     }
 
@@ -164,14 +155,20 @@ namespace ultrabus {
             return false;
         }
 
-        auto name_sign = split_name_signature (out_param);
-        auto& out_name = name_sign.first;
-        auto& out_signature = name_sign.second;
-        if (out_name.empty()==false && dbus_validate_member(out_name.c_str(), nullptr) != TRUE) {
-            return false;
-        }
-        if (out_signature.empty()==false && dbus_signature_validate_single(out_signature.c_str(), nullptr) != TRUE) {
-            return false;
+        std::string out_name;
+        std::string out_signature;
+        if ( ! out_param.empty()) {
+            auto name_sign = split_name_signature (out_param);
+            out_name = std::move (name_sign.first);
+            out_signature = std::move (name_sign.second);
+            if (out_name.empty()==false && dbus_validate_member(out_name.c_str(), nullptr) != TRUE) {
+                return false;
+            }
+            if (out_signature.empty()==false &&
+                dbus_signature_validate_single(out_signature.c_str(), nullptr) != TRUE)
+            {
+                return false;
+            }
         }
 
         std::string xml (R"(<method name=")");
