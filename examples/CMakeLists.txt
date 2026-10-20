@@ -32,3 +32,12 @@ target_include_directories (dbus-interface-with-only-methods PRIVATE
     ${CMAKE_BINARY_DIR}/lib
 )
 target_link_libraries (dbus-interface-with-only-methods PRIVATE ultrabus)
+
+
+add_executable (dbus-interface-with-only-properties)
+target_sources (dbus-interface-with-only-properties PRIVATE dbus-interface-with-only-properties.cpp)
+target_include_directories (dbus-interface-with-only-properties PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib
+    ${CMAKE_BINARY_DIR}/lib
+)
+target_link_libraries (dbus-interface-with-only-properties PRIVATE ultrabus)

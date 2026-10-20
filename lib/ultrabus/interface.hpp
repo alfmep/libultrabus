@@ -73,28 +73,51 @@ namespace ultrabus {
         bool add_property (const std::string& name,
                            const std::string& signature,
                            const bool readable,
-                           const bool writable,
-                           get_property_cb_t get_callback=nullptr,
-                           set_property_cb_t set_callback=nullptr);
+                           const bool writable=false,
+                           const bool disable_emit_on_set_property=false);
         bool add_property (const std::string& name,
                            const dbus_type& initial_value,
                            const bool readable,
-                           const bool writable,
-                           get_property_cb_t get_callback=nullptr,
-                           set_property_cb_t set_callback=nullptr);
+                           const bool writable=false,
+                           const bool disable_emit_on_set_property=false);
         bool add_property (const std::string& name,
                            dbus_type&& initial_value,
                            const bool readable,
-                           const bool writable,
-                           get_property_cb_t get_callback=nullptr,
+                           const bool writable=false,
+                           const bool disable_emit_on_set_property=false);
+        bool add_property (const std::string& name,
+                           const std::string& signature,
+                           get_property_cb_t get_callback,
                            set_property_cb_t set_callback=nullptr);
+        void remove_property (const std::string& name, bool emit_signal=true);
 
-        void remove_property (const std::string& name, bool emit_signal=false);
-        int get_property (const std::string& name, dbus_variant& value) const;
-        int set_property (const std::string& name, const dbus_variant& value);
+        int get_property (const std::string& name, dbus_type& value) const;
+        template<dbus_basic_cpp_types T>
+        int get_property (const std::string& name, T& value) const {
+            dbus_basic<T> v;
+            int retval = get_property (name, v);
+            if (retval == 0)
+                value = v.get ();
+            return retval;
+        }
+
+        int set_property (const std::string& name, const dbus_type& value, bool emit_if_changed=true);
+        template<dbus_basic_cpp_types T>
+        int set_property (const std::string& name, const T& value, bool emit_if_changed=true) {
+            return set_property (name, dbus_basic<T>(value), emit_if_changed);
+        }
+
         dbus_string_dict get_all_properties () const;
 
-        bool emit_property_changed (const std::string& property_name, const dbus_variant& value);
+        dbus_variant* property (const std::string& name);
+
+        bool emit_property_changed (const std::string& property_name);
+        bool emit_property_changed (const std::string& property_name, const dbus_type& value);
+        template<dbus_basic_cpp_types T>
+        bool emit_property_changed (const std::string& property_name, const T& value) {
+            return emit_property_changed (property_name, dbus_basic<T>(value));
+        }
+
         bool emit_property_invalid (const std::string& property_name);
         bool emit_properties_changed (const std::vector<std::string>& property_names,
                                       const std::vector<std::string>& invalid_names={});
@@ -146,7 +169,8 @@ namespace ultrabus {
             set_property_cb_t set_cb;
             bool readable;
             bool writable;
-            property_t () : value("v"), readable{false}, writable{false} {}
+            bool disable_emit_on_set_property;
+            property_t () : value("v"), readable{false}, writable{false}, disable_emit_on_set_property{false} {}
         };
 
         std::string if_name; // The name of this interface
@@ -166,7 +190,8 @@ namespace ultrabus {
                                 const bool readable,
                                 const bool writable,
                                 get_property_cb_t get_callback,
-                                set_property_cb_t set_callback);
+                                set_property_cb_t set_callback,
+                                const bool disable_emit_on_set_property);
         bool emit_signal_impl (message signal);
     };
 

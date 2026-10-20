@@ -266,11 +266,11 @@ namespace ultrabus {
                                   const std::string& signature,
                                   const bool readable,
                                   const bool writable,
-                                  get_property_cb_t get_callback,
-                                  set_property_cb_t set_callback)
+                                  const bool disable_emit_on_set_property)
     {
-        return add_property_impl (name, signature, nullptr, false, readable,
-                                  writable, get_callback, set_callback);
+        return add_property_impl (name, signature, nullptr, false,
+                                  readable, writable, nullptr, nullptr,
+                                  disable_emit_on_set_property);
     }
 
     //--------------------------------------------------------------------------
@@ -279,11 +279,11 @@ namespace ultrabus {
                                   const dbus_type& initial_value,
                                   const bool readable,
                                   const bool writable,
-                                  get_property_cb_t get_callback,
-                                  set_property_cb_t set_callback)
+                                  const bool disable_emit_on_set_property)
     {
-        return add_property_impl (name, "", &initial_value, false, readable,
-                                  writable, get_callback, set_callback);
+        return add_property_impl (name, "", &initial_value, false,
+                                  readable, writable, nullptr, nullptr,
+                                  disable_emit_on_set_property);
     }
 
     //--------------------------------------------------------------------------
@@ -292,11 +292,26 @@ namespace ultrabus {
                                   dbus_type&& initial_value,
                                   const bool readable,
                                   const bool writable,
+                                  const bool disable_emit_on_set_property)
+    {
+        return add_property_impl (name, "", &initial_value, true,
+                                  readable, writable, nullptr, nullptr,
+                                  disable_emit_on_set_property);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::add_property (const std::string& name,
+                                  const std::string& signature,
                                   get_property_cb_t get_callback,
                                   set_property_cb_t set_callback)
     {
-        return add_property_impl (name, "", &initial_value, true, readable,
-                                  writable, get_callback, set_callback);
+        return add_property_impl (name, signature, nullptr, false,
+                                  get_callback ? true : false,
+                                  set_callback ? true : false,
+                                  get_callback, set_callback,
+                                  false);
     }
 
 
@@ -309,7 +324,8 @@ namespace ultrabus {
                                        const bool readable,
                                        const bool writable,
                                        get_property_cb_t get_callback,
-                                       set_property_cb_t set_callback)
+                                       set_property_cb_t set_callback,
+                                       const bool disable_emit_on_set_property)
     {
         if (name.empty() || dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
@@ -339,6 +355,9 @@ namespace ultrabus {
         p.get_cb = get_callback;
         p.set_cb = set_callback;
 
+        if (!get_callback && !set_callback)
+            p.disable_emit_on_set_property = disable_emit_on_set_property;
+
         properties.emplace (name, p);
         return true;
     }
@@ -359,9 +378,10 @@ namespace ultrabus {
     //  0: Success
     // -1: Property not found
     // -2: Property is write-only
-    // -3: Error getting property value
+    // -3: Wrong value type
+    // -4: Error getting property value
     //--------------------------------------------------------------------------
-    int interface::get_property (const std::string& name, dbus_variant& value) const
+    int interface::get_property (const std::string& name, dbus_type& value) const
     {
         auto i = properties.find (name);
         if (i == properties.end())
@@ -372,11 +392,28 @@ namespace ultrabus {
             return -2; // Property is write-only
 
         bool ok {true};
-        if (p.get_cb)
-            ok = p.get_cb (name, value);
-        else
-            value = p.value;
-        return ok ? 0 : -3;
+        if (value.is_variant()) {
+            if (p.get_cb) {
+                ok = p.get_cb (name, value.cast<dbus_variant>());
+            }else{
+                value = p.value;
+            }
+            return ok ? 0 : -4;
+        }
+
+        if (p.sign=="v" && p.value.value_signature() != value.signature())
+            return -3;
+        else if (p.sign != value.signature())
+            return -3;
+
+        if (p.get_cb) {
+            dbus_variant v;
+            ok = p.get_cb (name, v);
+            value = v.get();
+        }else{
+            value = p.value.get ();
+        }
+        return ok ? 0 : -4;
     }
 
     //--------------------------------------------------------------------------
@@ -386,7 +423,7 @@ namespace ultrabus {
     // -3: Wrong value type
     // -4: Error setting property value
     //--------------------------------------------------------------------------
-    int interface::set_property (const std::string& name, const dbus_variant& value)
+    int interface::set_property (const std::string& name, const dbus_type& value, bool emit_if_changed)
     {
         auto i = properties.find (name);
         if (i == properties.end())
@@ -396,14 +433,27 @@ namespace ultrabus {
         if (!p.writable)
             return -2; // Property is read-only
 
-        if (value.get().signature() != p.sign  &&  p.sign != "v")
-            return -3; // Setting a value of wrong type
+        if (p.sign != "v") {
+            if (value.is_variant()) {
+                if (value.cast<dbus_variant>().value_signature() != p.sign) {
+                    return -3; // Setting a value of wrong type
+                }
+            }else if (value.signature() != p.sign){
+                return -3; // Setting a value of wrong type
+            }
+        }
 
         bool ok {true};
-        if (p.set_cb)
+        if (p.set_cb) {
             ok = p.set_cb (name, value);
-        else
+        }else if (emit_if_changed && !p.disable_emit_on_set_property) {
+            if (p.value != value) {
+                p.value = value;
+                emit_property_changed (name, value);
+            }
+        }else{
             p.value = value;
+        }
         return ok ? 0 : -4;
     }
 
@@ -430,11 +480,36 @@ namespace ultrabus {
         return props;
     }
 
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    dbus_variant* interface::property (const std::string& name)
+    {
+        auto i = properties.find (name);
+        if (i == properties.end())
+            return nullptr;
+        else
+            return &i->second.value;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::emit_property_changed (const std::string& property_name)
+    {
+        if (!obj || !obj->is_enabled())
+            return false;
+
+        auto i = properties.find (property_name);
+        if (i == properties.end())
+            return false;
+        return emit_property_changed (property_name, i->second.value);
+    }
+
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     bool interface::emit_property_changed (const std::string& property_name,
-                                           const dbus_variant& value)
+                                           const dbus_type& value)
     {
         if (!obj || !obj->is_enabled())
             return false;
@@ -446,7 +521,7 @@ namespace ultrabus {
         props.set (property_name, value);
 
         message sig (obj->path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
-        sig.append_args (property_name, std::move(props), std::move(invalid_props));
+        sig.append_args (if_name, std::move(props), std::move(invalid_props));
         return obj->get_connection().send (sig);
     }
 

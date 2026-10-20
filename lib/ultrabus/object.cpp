@@ -499,11 +499,11 @@ namespace ultrabus {
                 reply = msg.make_reply (DBUS_ERROR_PROPERTY_READ_ONLY, "Property is read-only");
             break;
         case -3:
-            if (!get_value) {
+            if (get_value)
+                reply = msg.make_reply (DBUS_ERROR_FAILED, "Getting property value of wrong type");
+            else
                 reply = msg.make_reply (DBUS_ERROR_FAILED, "Setting property value of wrong type");
-                break;
-            }
-            __attribute__((fallthrough)); // Intentional fallthrough when get_value==true
+            break;
         case -4:
         default:
             if (get_value)
