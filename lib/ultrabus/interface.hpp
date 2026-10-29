@@ -127,39 +127,131 @@ namespace ultrabus {
          * as argument.
          * @param name The name of the DBus method we wish to add.
          * @param callback A callback that will be called whenever
-         *           some other enitiy on the Dbus calls this method
-         *           on this interface instance.
+         *                 some other enitiy on the Dbus calls this
+         *                 method.
          * @return <code>true</code> if the method was successfully added.<br/>
          *         <code>false</code> if the method name isn't a valid DBus
-         *         method call name, or if a method with the same name has
-         *         already been added to this interface.
+         *         method call name, if a method with the same name has
+         *         already been added to this interface, or if
+         *         <code>callback</code> is a <code>nullptr</code>.
          * @see iface_method_cb_t A callback implementing the DBus method call.
          */
         bool add_method (const std::string& name,
                          iface_method_cb_t callback);
 
-        // in_param:   "[name:]signature"
-        // out_param:  "[name:]signature"
+
         /**
          * Add a DBus method to this interface that may take
          * one argument and may include a return value in the reply.
          * @param name The name of the DBus method we wish to add.
+         * @param in_param A string describing the input parameter to the
+         *                 method. This description can be in one of
+         *                 three forms:
+         *                 <ul>
+         *                   <li>"" (an empty string)</li>
+         *                   <li>"signature"</li>
+         *                   <li>"name:signature"</li>
+         *                 </ul>
+         *                 The first form, an empty string, means that
+         *                 the DBus method doesn't have an input parameter.<br/>
+         *                 The second form is a DBus signature of a single
+         *                 DBus data type.<br/>
+         *                 The third form is a descriptive name of the
+         *                 parameter, followed by a colon(:), followed by
+         *                 a DBus signature of a single DBus data type.<br/>
+         *                 When using the third form, the XML output from
+         *                 a call to
+         *                 <code>org.freedesktop.DBus.Introspectable.Introspect</code>
+         *                 will include the name given to the parameter,
+         *                 making the introspect data a bit more descriptive.
+         *                 Note that the parameter name must be a valid DBus
+         *                 member name.
+         * @param out_param A string describing the return value of the
+         *                  method. See <code>in_param</code> for the
+         *                  format of this argument.<br>
+         *                  An empty string means that the method doesn't
+         *                  include a return value in the reply.
          * @param callback A callback that will be called whenever
-         *           some other enitiy on the Dbus calls this method
-         *           on this interface.
+         *                 some other enitiy on the Dbus calls this
+         *                 method.
+         * @return <code>true</code> if the method is successfully added
+         *         to the interface.<br/>
+         *         <code>false</code> if a method with the same name is already
+         *         added, if the name isn't a valid DBus method name, if any
+         *         in/out parameter description is invalid, or if
+         *         <code>callback</code> is a <code>nullptr</code>
+         * @see iface_method_cb_t A callback implementing the DBus method call.
          */
         bool add_method (const std::string& name,
                          const std::string& in_param,
                          const std::string& out_param,
                          iface_method_cb_t callback);
 
+        /**
+         * Add a DBus method to this interface that may take
+         * one argument and may include a return value in the reply.
+         * @param name The name of the DBus method we wish to add.
+         * @param in_param A vector of strings that describes all input
+         *                 parameters to this method. If the vector is
+         *                 empty, this method doesn't have an input
+         *                 parameter.<br/>
+         *                 Each string in the vector is a description of
+         *                 an input parameter. This description can be
+         *                 in one of three forms:
+         *                 <ul>
+         *                   <li>"" (an empty string)</li>
+         *                   <li>"signature"</li>
+         *                   <li>"name:signature"</li>
+         *                 </ul>
+         *                 The first form, an empty string, is simply
+         *                 ignored, not counted as an input parameter.<br/>
+         *                 The second form is a DBus signature of a single
+         *                 DBus data type.<br/>
+         *                 The third form is a descriptive name of the
+         *                 parameter, followed by a colon(:), followed by
+         *                 a DBus signature of a single DBus data type.<br/>
+         *                 When using the third form, the XML output from
+         *                 a call to
+         *                 <code>org.freedesktop.DBus.Introspectable.Introspect</code>
+         *                 will include the name given to the parameter,
+         *                 making the introspect data a bit more descriptive.
+         *                 Note that the parameter name must be a valid DBus
+         *                 member name.
+         * @param out_param A string describing the return value of the
+         *                  method. See <code>in_param</code> for the
+         *                  format of this argument.<br>
+         *                  An empty string means that the method doesn't
+         *                  include a return value in the reply.
+         * @param callback A callback that will be called whenever
+         *                 some other enitiy on the Dbus calls this
+         *                 method.
+         * @return <code>true</code> if the method is successfully added
+         *         to the interface.<br/>
+         *         <code>false</code> if a method with the same name is already
+         *         added, if the name isn't a valid DBus method name, if any
+         *         in/out parameter description is invalid, or if
+         *         <code>callback</code> is a <code>nullptr</code>
+         * @see iface_method_cb_t A callback implementing the DBus method call.
+         */
         bool add_method (const std::string& name,
                          const std::vector<std::string>& in_params,
                          const std::string& out_param,
                          iface_method_cb_t callback);
 
+        /**
+         * Remove a method from this interface.
+         * @param name The name of the DBus method
+         *             to remove from the interface.
+         */
         void remove_method (const std::string& name);
 
+        /**
+         * Check if the interface has a specific method.
+         * @param The name of the DBus method.
+         * @return <code>true</code> if this interface has
+         *         a DBus method with the given name.<br/>
+         *         <code>false</code> if not.
+         */
         bool has_method (const std::string& name) const;
 
 
