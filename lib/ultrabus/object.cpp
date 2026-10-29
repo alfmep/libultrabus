@@ -574,7 +574,7 @@ namespace ultrabus {
 
         auto entry = interfaces.find (iface);
         if (entry == interfaces.end()) {
-            message reply (msg, true, "se.ultramarin.error", "Get/Set property error - no such interface");
+            message reply (msg, true, DBUS_ERROR_FAILED, "Get/Set property error - no such interface");
             conn.send (reply);
             return true;
         }
