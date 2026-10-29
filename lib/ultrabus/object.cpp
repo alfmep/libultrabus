@@ -84,17 +84,36 @@ namespace {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    std::string get_node_path (const std::string& base, const std::string& sub)
+    std::string get_relative_path (const std::string& base, const std::string& path)
     {
-        if (sub[0] != '/')
-            return sub;
-        if (base == "/")
-            return sub.substr (1);
-        if (strncmp(base.c_str(), sub.c_str(), base.size()) != 0)
+        if (path[0] != '/')
+            return path; // Path is already a relative path
+
+        // path is absolute (starting with '/')
+
+        if (base == "/") {
+            std::string rel_path = path.substr (1);
+            if (rel_path[0] == '/')
+                return "";
+            else
+                return rel_path;
+        }
+        if (strncmp(base.c_str(), path.c_str(), base.size()) != 0)
             return "";
-        if (sub[base.size()] != '/')
+        if (path[base.size()] != '/')
             return "";
-        return sub.substr (base.size()+1);
+        return path.substr (base.size()+1);
+    }
+
+    //--------------------------------------------------------------------------
+    // Search upwards in the object tree for an object implementing
+    // interface org.freedesktop.DBus.ObjectManager
+    //--------------------------------------------------------------------------
+    ultrabus::object* find_object_with_interface_objectmanager (ultrabus::object* obj)
+    {
+        while (obj && (!obj->is_enabled() || !obj->has_interface_objectmanager()))
+            obj = obj->parent();
+        return obj;
     }
 
 
@@ -108,14 +127,14 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     object::object (connection& conn,
                     const std::string& object_path,
-                    const bool implement_if_introspectable,
-                    const bool implement_if_properties,
-                    const bool implement_if_objectmanager)
+                    const bool enable_interface_objectmanager,
+                    const bool enable_interface_introspectable)
         : object_handler(conn),
           opath (object_path),
-          implements_introspectable {implement_if_introspectable},
-          implements_properties {implement_if_properties},
-          implements_objectmanager {implement_if_objectmanager},
+          parent_obj (nullptr),
+          implements_properties {false},
+          implements_objectmanager {enable_interface_objectmanager},
+          implements_introspectable {enable_interface_introspectable},
           enabled {false}
     {
         if (dbus_validate_path(object_path.c_str(), nullptr) != TRUE)
@@ -127,6 +146,9 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     object::~object ()
     {
+        disable ();
+        for (auto& entry : nodes)
+            entry.second->parent_obj = nullptr;
         nodes.clear ();
         interfaces.clear ();
     }
@@ -134,16 +156,51 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    void object::emit_all_interfaces_added ()
+    {
+        object* obj_with_om = find_object_with_interface_objectmanager (parent_obj);
+        if (!obj_with_om)
+            return;
+
+        dbus_string_dict added_ifaces ("a{sv}");
+        if (implements_introspectable)
+            added_ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
+        if (implements_properties)
+            added_ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
+        if (implements_objectmanager)
+            added_ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
+        for (auto& if_entry : interfaces) {
+            if (implements_properties)
+                added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+            else
+                added_ifaces.set (if_entry.first, dbus_string_dict("v"));
+        }
+
+        message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
+        signal.append_args (opath, added_ifaces);
+        conn.send (signal);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     bool object::enable (bool enable_sub_nodes)
     {
+        if ( ! conn.is_connected()) {
+            disable ();
+            return false;
+        }
+
         if ( ! enabled) {
             enabled = register_object_path (opath.get(), nullptr);
             if ( ! enabled)
                 return false;
+            emit_all_interfaces_added ();
         }
+
         bool retval = true;
         if (enable_sub_nodes) {
-            for (const auto& node : nodes) {
+            for (auto& node : nodes) {
                 if ( ! node.second->enable(true))
                     retval = false;
             }
@@ -154,86 +211,132 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void object::disable ()
+    void object::emit_all_interfaces_removed ()
     {
-        for (const auto& node : nodes)
-            node.second->disable ();
-        unregister_object_path (opath.get());
-        enabled = false;
+        object* obj_with_om = find_object_with_interface_objectmanager (parent_obj);
+        if (!obj_with_om)
+            return;
+
+        dbus_array removed_ifaces ("s");
+        if (has_interface_introspectable())
+            removed_ifaces.push_back ("org.freedesktop.DBus.Introspectable");
+        if (has_interface_properties())
+            removed_ifaces.push_back ("org.freedesktop.DBus.Properties");
+        if (has_interface_objectmanager())
+            removed_ifaces.push_back ("org.freedesktop.DBus.ObjectManager");
+        for (const auto& if_entry : interfaces)
+            removed_ifaces.push_back (if_entry.first);
+
+        message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved");
+        signal.append_args (opath, removed_ifaces);
+        conn.send (signal);
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    std::shared_ptr<ultrabus::object> object::create_node (
-            const std::string& sub_path,
-            const bool implement_if_introspectable,
-            const bool implement_if_properties,
-            const bool implement_if_objectmanager)
+    void object::disable ()
     {
-        std::string node_path = get_node_path (opath, sub_path);
-        if (node_path.empty()) {
+        for (auto& node : nodes)
+            node.second->disable ();
+
+        if ( !enabled || !conn.is_connected()) {
+            enabled = false;
+            return;
+        }
+        unregister_object_path (opath.get());
+        enabled = false;
+        emit_all_interfaces_removed ();
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    std::shared_ptr<ultrabus::object> object::create_node (
+            const std::string& node_path,
+            const bool enable_interface_objectmanager,
+            const bool enable_interface_introspectable)
+    {
+        std::string relative_path = get_relative_path (opath, node_path);
+        if (relative_path.empty()) {
             return nullptr;
         }
-
-        std::string full_path (opath);
+        std::string absolute_path (opath);
         if (opath.get().back() != '/')
-            full_path.push_back ('/');
-        full_path.append (node_path);
+            absolute_path.push_back ('/');
+        absolute_path.append (relative_path);
 
-        if (dbus_validate_path(full_path.c_str(), nullptr) != TRUE) {
+        if (dbus_validate_path(absolute_path.c_str(), nullptr) != TRUE) {
             return nullptr;
         }
 
         std::shared_ptr<object> node (new object(conn,
-                                                 full_path,
-                                                 implement_if_introspectable,
-                                                 implement_if_properties,
-                                                 implement_if_objectmanager));
-        if (node)
-            nodes.emplace (node_path, node);
+                                                 absolute_path,
+                                                 enable_interface_objectmanager,
+                                                 enable_interface_introspectable));
+        if (node) {
+            node->parent_obj = this;
+            nodes.emplace (relative_path, node);
+        }
         return node;
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool object::erase_node (const std::string& sub_path, bool emit_signal)
+    bool object::remove_node (const std::string& node_path)
     {
-        std::string node_path = get_node_path (opath, sub_path);
-        auto i = nodes.find (node_path);
+        std::string relative_path = get_relative_path (opath, node_path);
+        if (relative_path.empty())
+            return false;
+
+        auto i = nodes.find (relative_path);
         if (i == nodes.end())
             return false;
 
-        object& sub_node = *i->second;
+        object& node = *i->second;
+        node.disable ();
+        node.parent_obj = nullptr;
 
-        bool send_signal = emit_signal &&
-            implements_objectmanager &&
-            is_enabled() &&
-            sub_node.is_enabled();
-
-        dbus_opath removed_path = sub_node.path ();
-        dbus_array removed_ifaces (DBUS_TYPE_STRING);
-        if (send_signal) {
-            for (auto& if_entry : sub_node.interfaces)
-                removed_ifaces.push_back (if_entry.first);
-            if (sub_node.implements_introspectable)
-                removed_ifaces.push_back ("org.freedesktop.DBus.Introspectable");
-            if (sub_node.implements_properties)
-                removed_ifaces.push_back ("org.freedesktop.DBus.Properties");
-            if (sub_node.implements_objectmanager)
-                removed_ifaces.push_back ("org.freedesktop.DBus.ObjectManager");
-        }
-
-        sub_node.disable ();
         nodes.erase (i);
-
-        if (send_signal) {
-            message signal (opath, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved");
-            signal.append_args (removed_path, removed_ifaces);
-            conn.send (signal);
-        }
         return true;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void object::emit_interface_added (interface* iface)
+    {
+        object* obj_with_om = find_object_with_interface_objectmanager (this);
+        if (!obj_with_om)
+            return;
+
+        // Emit signal
+        dbus_string_dict added_ifaces ("a{sv}");
+        if (implements_properties)
+            added_ifaces.set (iface->name(), iface->get_all_properties());
+        else
+            added_ifaces.set (iface->name(), dbus_string_dict("v"));
+        message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
+        signal.append_args (opath, std::move(added_ifaces));
+        conn.send (signal);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void object::emit_interface_added (const std::string& interface_name)
+    {
+        object* obj_with_om = find_object_with_interface_objectmanager (this);
+        if (!obj_with_om)
+            return;
+
+        // Emit signal
+        dbus_string_dict added_ifaces ("a{sv}");
+        added_ifaces.set (interface_name, dbus_string_dict("v"));
+
+        message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
+        signal.append_args (opath, std::move(added_ifaces));
+        conn.send (signal);
     }
 
 
@@ -246,7 +349,31 @@ namespace ultrabus {
 
         iface->set_owner (this);
         interfaces.emplace (iface->name(), iface);
+
+        if (iface->has_properties())
+            enable_interface_properties ();
+
+        if (enabled && conn.is_connected())
+            emit_interface_added (iface.get());
+
         return true;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void object::emit_interface_removed (const std::string& iface_name)
+    {
+        object* obj_with_om = find_object_with_interface_objectmanager (this);
+        if (!obj_with_om)
+            return;
+
+        // Emit signal
+        dbus_array removed_ifaces ("s");
+        removed_ifaces.push_back (iface_name);
+        message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
+        signal.append_args (opath, removed_ifaces);
+        conn.send (signal);
     }
 
 
@@ -261,102 +388,23 @@ namespace ultrabus {
         auto iface = entry->second;
         interfaces.erase (entry);
         iface->set_owner (nullptr);
+
+        if (enabled && conn.is_connected())
+            emit_interface_removed (interface_name);
+
         return true;
     }
 
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool object::emit_interfaces_added (const dbus_opath& object_path)
+    void object::enable_interface_properties ()
     {
-        if ( !implements_objectmanager || !is_enabled())
-            return false;
-
-        std::string node_path = get_node_path (opath, object_path);
-        auto i = nodes.find (node_path);
-        if (i == nodes.end()  ||  i->second->is_enabled()==false)
-            return false;
-
-        dbus_opath added_path = i->second->path ();
-        dbus_string_dict added_ifaces ("a{sv}");
-        for (auto& if_entry : i->second->interfaces)
-            added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-
-        message signal (opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
-        signal.append_args (added_path, added_ifaces);
-        return conn.send (signal);
-    }
-
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool object::emit_interface_added (const dbus_opath& object_path,
-                                       const std::string& interface_name)
-    {
-        std::vector<std::string> interface_names ({interface_name});
-        return emit_interfaces_added (object_path, interface_names);
-    }
-
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool object::emit_interfaces_added (const dbus_opath& object_path,
-                                        const std::vector<std::string>& interface_names)
-    {
-        if ( !implements_objectmanager || !is_enabled())
-            return false;
-
-        std::string node_path = get_node_path (opath, object_path);
-        auto i = nodes.find (node_path);
-        if (i == nodes.end()  ||  i->second->is_enabled()==false)
-            return false;
-
-        auto& node = *i->second;
-        dbus_opath added_path = node.path ();
-        dbus_string_dict added_ifaces ("a{sv}");
-        for (auto& iface_name : interface_names) {
-            auto if_entry = node.interfaces.find (iface_name);
-            if (if_entry == node.interfaces.end())
-                continue;
-            added_ifaces.set (if_entry->first, if_entry->second->get_all_properties());
+        if ( ! implements_properties) {
+            implements_properties = true;
+            if (enabled && conn.is_connected())
+                emit_interface_added ("org.freedesktop.DBus.Properties");
         }
-        if (added_ifaces.empty())
-            return false;
-
-        message signal (opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
-        signal.append_args (added_path, added_ifaces);
-        return conn.send (signal);
-    }
-
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool object::emit_interface_removed (const dbus_opath& object_path,
-                                         const std::string& interface_name)
-    {
-        std::vector<std::string> interface_names ({interface_name});
-        return emit_interfaces_removed (object_path, interface_names);
-    }
-
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    bool object::emit_interfaces_removed (const dbus_opath& object_path,
-                                          const std::vector<std::string>& interface_names)
-    {
-        if ( !implements_objectmanager || !is_enabled())
-            return false;
-
-        dbus_array removed_ifaces (DBUS_TYPE_STRING);
-        for (auto& iface_name : interface_names) {
-            if (dbus_validate_interface(iface_name.c_str(), nullptr) != TRUE)
-                return false;
-            removed_ifaces.push_back (iface_name);
-        }
-
-        message signal (opath, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved");
-        signal.append_args (object_path, removed_ifaces);
-        return conn.send (signal);
     }
 
 
@@ -367,46 +415,44 @@ namespace ultrabus {
         static std::set<std::string> if_properties_method_names {{"Get", "GetAll", "Set"}};
         bool handled {false};
 
-        // Check standard interfaces
-        //
-        if (implements_introspectable  &&  msg.interface() == "org.freedesktop.DBus.Introspectable")
-            handled = on_introspect_method (msg);
-        else if (implements_properties  &&  msg.interface() == "org.freedesktop.DBus.Properties")
-            handled = on_properties_method (msg);
-        else if (implements_objectmanager  &&  msg.interface() == "org.freedesktop.DBus.ObjectManager")
-            handled = on_objectmanager_method (msg);
+        if (msg.interface().empty()) {
+            // No interface specified
+            // Check standard interfaces
+            if (!handled) {
+                if (implements_introspectable  &&  msg.name() == "Introspect")
+                    handled = on_introspect_method (msg);
+                else if (implements_properties  &&  if_properties_method_names.contains(msg.name()))
+                    handled = on_properties_method (msg);
+                else if (implements_objectmanager  &&  msg.name() == "GetManagedObjects")
+                    handled = on_objectmanager_method (msg);
+            }
+            // No interface specified
+            // Check registered interfaces
+            if (!handled) {
+                for (auto& iface : interfaces) {
+                    if (iface.second->has_method(msg.name())) {
+                        handled = iface.second->on_method (msg);
+                        break;
+                    }
+                }
+            }
+        }else{
+            // Check standard interfaces
+            if (implements_introspectable  &&  msg.interface() == "org.freedesktop.DBus.Introspectable")
+                handled = on_introspect_method (msg);
+            else if (implements_properties  &&  msg.interface() == "org.freedesktop.DBus.Properties")
+                handled = on_properties_method (msg);
+            else if (implements_objectmanager  &&  msg.interface() == "org.freedesktop.DBus.ObjectManager")
+                handled = on_objectmanager_method (msg);
 
-        // Check registered interfaces
-        //
-        if (!handled) {
-            auto entry = interfaces.find (msg.interface());
-            if (entry != interfaces.end()) {
-                handled = entry->second->on_method (msg);
+            // Check registered interfaces
+            //
+            if (!handled) {
+                auto entry = interfaces.find (msg.interface());
+                if (entry != interfaces.end())
+                    handled = entry->second->on_method (msg);
             }
         }
-
-        // Check standard interfaces again, in case the
-        // method call has an empty interface name
-        //
-        if (!handled) {
-            if (implements_introspectable  &&  msg.name() == "Introspect")
-                handled = on_introspect_method (msg);
-            else if (implements_properties  &&  if_properties_method_names.contains(msg.name()))
-                handled = on_properties_method (msg);
-            else if (implements_objectmanager  &&  msg.name() == "GetManagedObjects")
-                handled = on_objectmanager_method (msg);
-        }
-
-        // // Check registered interfaces again, in case the
-        // // method call has an empty interface name
-        // //
-        // if (!handled) {
-        //     for (auto& iface : interfaces) {
-        //         if (iface->second->has_method(msg.name()))
-        //             handled = entry->second->on_method (msg);
-        //     }
-        // }
-
         return handled;
     }
 
@@ -564,28 +610,44 @@ namespace ultrabus {
         if ( ! implements_objectmanager  ||  msg.name() != "GetManagedObjects")
             return false;
 
-        dbus_opath_dict objs ("a{sa{sv}}");
-
+        dbus_opath_dict dict ("a{sa{sv}}");
         for (auto& entry : nodes) {
-            auto& obj = *entry.second;
-            if ( ! obj.is_enabled())
+            auto& node = *entry.second;
+            if ( ! node.is_enabled())
                 continue;
-            dbus_string_dict ifaces ("a{sv}");
-            if (obj.implements_introspectable)
-                ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
-            if (obj.implements_properties)
-                ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
-            if (obj.implements_objectmanager)
-                ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
-            for (auto& if_entry : obj.interfaces)
-                ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-            objs.set (obj.path(), ifaces);
+            node.get_all_objects_ifaces_properties (dict);
         }
 
         message reply (msg, false);
-        reply.append_args (std::move(objs));
+        reply.append_args (std::move(dict));
         return conn.send (reply);
     }
 
 
-}
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void object::get_all_objects_ifaces_properties (dbus_opath_dict& dict)
+    {
+        dbus_string_dict ifaces ("a{sv}");
+        if (implements_introspectable)
+            ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
+        if (implements_properties)
+            ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
+        if (implements_objectmanager)
+            ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
+        for (auto& if_entry : interfaces) {
+            if (implements_properties)
+                ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+            else
+                ifaces.set (if_entry.first, dbus_string_dict("v"));
+        }
+        dict.set (opath, ifaces);
+
+        for (auto& entry : nodes) {
+            if (entry.second->is_enabled())
+                entry.second->get_all_objects_ifaces_properties (dict);
+        }
+    }
+
+
+} // namespace ultrabus

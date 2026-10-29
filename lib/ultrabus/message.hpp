@@ -382,7 +382,7 @@ namespace ultrabus {
          *
          */
         template<any_dbus_or_basic_cpp_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args (T& arg, Targs&... args) {
+        bool get_args (T& arg, Targs&... args) const {
             DBusMessageIter iter;
             if (!ctx || !dbus_message_iter_init(ctx, &iter))
                 return false;
@@ -433,7 +433,7 @@ namespace ultrabus {
          * @see get_args()
          */
         template<any_dbus_or_basic_cpp_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_strict (T& arg, Targs&... args) {
+        bool get_args_strict (T& arg, Targs&... args) const {
             DBusMessageIter iter;
             if (!ctx || !dbus_message_iter_init(ctx, &iter))
                 return false;
@@ -576,10 +576,10 @@ namespace ultrabus {
 
 
 
-        inline bool get_args_impl (DBusMessageIter* /*iter*/, bool /*strict_signature*/) {return true;}
+        inline bool get_args_impl (DBusMessageIter*, bool) const {return true;}
 
         template<any_dbus_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) {
+        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) const {
             auto next_arg = get_next_message_argument (iter);
             if (!next_arg)
                 return false;
@@ -603,7 +603,7 @@ namespace ultrabus {
         }
 
         template<dbus_basic_cpp_types T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) {
+        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) const {
             if (!get_next_message_argument(iter, arg))
                 return false;
             dbus_message_iter_next (iter);

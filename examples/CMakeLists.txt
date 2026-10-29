@@ -19,9 +19,9 @@
 cmake_minimum_required (VERSION 3.25)
 
 if (CMAKE_BUILD_TYPE MATCHES "^[Dd]ebug")
-    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra;-Wno-unused-parameter>>")
 elseif (CMAKE_BUILD_TYPE MATCHES "^[Mm]em[Dd]ebug")
-    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+    add_compile_options ("$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra;-Wno-unused-parameter>>")
 endif()
 
 
@@ -41,3 +41,26 @@ target_include_directories (dbus-interface-with-only-properties PRIVATE
     ${CMAKE_BINARY_DIR}/lib
 )
 target_link_libraries (dbus-interface-with-only-properties PRIVATE ultrabus)
+
+
+add_executable (dbus-service-with-multiple-objects)
+target_sources (dbus-service-with-multiple-objects
+    PRIVATE
+    dbus-service-with-multiple-objects.cpp
+    interface_foo_bar_tick_manager.cpp
+    interface_foo_bar_tick.cpp
+)
+target_include_directories (dbus-service-with-multiple-objects PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib
+    ${CMAKE_BINARY_DIR}/lib
+)
+target_link_libraries (dbus-service-with-multiple-objects PRIVATE ultrabus)
+
+
+# add_executable (APP_NAME)
+# target_sources (APP_NAME PRIVATE APP_NAME.cpp)
+# target_include_directories (APP_NAME PRIVATE
+#     ${CMAKE_SOURCE_DIR}/lib
+#     ${CMAKE_BINARY_DIR}/lib
+# )
+# target_link_libraries (APP_NAME PRIVATE ultrabus)

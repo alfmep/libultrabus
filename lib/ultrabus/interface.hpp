@@ -35,28 +35,119 @@ namespace ultrabus {
 
 
     /**
-     *
+     * A class used for implementing DBus interfaces.
      */
     class interface {
     public:
+        /**
+         * A callback used for implementing DBus method calls.
+         * @param conn A DBus connection object.
+         * @param msg The DBus method call message.
+         * @note It is the responsibility of this callback
+         *       to send a reply message when it has finished
+         *       doing what it is suppose to do. Either a normal
+         *       reply with or without arguments, or an
+         *       error reply.<br/>
+         *       If no reply is sent, the entity making the
+         *       DBus method call will have to wait until it
+         *       gets a timeout (no response) error.<br/>
+         *       <br/>
+         *       An example of the simplest way of sending a reply
+         *       from within the callback:
+         *       <pre>
+         *       conn.send (msg.make_reply());
+         *       </pre>
+         *       A simple example of sending an error reply from within
+         *       the callback:
+         *       <pre>
+         *       conn.send (msg.make_reply("an.error.name", "An error description"));
+         *       </pre>
+         */
         using iface_method_cb_t = std::function<void (connection& conn, message& msg)>;
+
+        /**
+         * A callback used for getting an interface property value.
+         * When implementing this callback, <code>true</code> must
+         * be returned if the callback could successfully assign
+         * the <code>value</code> parameter with the property value.<br/>
+         * If this callback returns <code>false</code>, the entity trying
+         * to get the property value will instead get an error response.
+         * @param name The name of the property.
+         * @param value A <code>dbus_variant</code> that will be
+         *              assigned the property value.
+         * @return <code>true</code> if the value could be retrieved
+         *         without error. <code>false</code> if the property
+         *         couldn't be retrieved for some reason.
+         */
         using get_property_cb_t = std::function<bool (const std::string& name,
                                                       dbus_variant& value)>;
+
+        /**
+         * A callback used for setting an interface property value.
+         * When implementing this callback, <code>true</code> must
+         * be returned if the callback could successfully assign
+         * the new value to the property.<br/>
+         * If this callback returns <code>false</code>, the entity trying
+         * to set the property value will instead get an error response.
+         * @param name The name of the property.
+         * @param value A <code>dbus_variant</code> that contains
+         *              the value to be assigned to the property.
+         * @return <code>true</code> if the value could be assigned
+         *         without error. <code>false</code> if the property
+         *         couldn't be assigned the new value for some reason.
+         */
         using set_property_cb_t = std::function<bool (const std::string& name,
                                                       const dbus_variant& value)>;
 
+        /**
+         * Create an instance of this class.
+         * @param interface_name The name of the newly created interface.
+         *                       This must be a valid DBus interface name.
+         * @return A shared pointer to an <code>interface</code> instance.
+         *         Or a <code>nullptr</code> if the interface name isn't
+         *         a valid DBus interface name.
+         */
         static std::shared_ptr<interface> create (const std::string& interface_name);
 
-        virtual ~interface ();
+        virtual ~interface (); /**< Destructor. Free resources. */
 
-        const std::string name () const {return if_name;}
-        const std::string to_xml () const;
+        /**
+         * Get the name of this DBus interface.
+         * @return A const reference to the DBus interface name.
+         * @note The returned reference to the interface name is
+         *       only valid for the lifetime of this instance.
+         */
+        const std::string& name () const {return if_name;}
 
+        /**
+         * Add a DBus method to this interface that takes no
+         * arguments and doesn't return a value.
+         * Note that the supplied callback must still send back
+         * a reply, even if that reply doesn't include a return value
+         * as argument.
+         * @param name The name of the DBus method we wish to add.
+         * @param callback A callback that will be called whenever
+         *           some other enitiy on the Dbus calls this method
+         *           on this interface instance.
+         * @return <code>true</code> if the method was successfully added.<br/>
+         *         <code>false</code> if the method name isn't a valid DBus
+         *         method call name, or if a method with the same name has
+         *         already been added to this interface.
+         * @see iface_method_cb_t A callback implementing the DBus method call.
+         */
         bool add_method (const std::string& name,
                          iface_method_cb_t callback);
 
         // in_param:   "[name:]signature"
         // out_param:  "[name:]signature"
+        /**
+         * Add a DBus method to this interface that may take
+         * one argument and may include a return value in the reply.
+         * @param name The name of the DBus method we wish to add.
+         * @param callback A callback that will be called whenever
+         *           some other enitiy on the Dbus calls this method
+         *           on this interface.
+         */
         bool add_method (const std::string& name,
                          const std::string& in_param,
                          const std::string& out_param,
@@ -68,30 +159,38 @@ namespace ultrabus {
                          iface_method_cb_t callback);
 
         void remove_method (const std::string& name);
-        bool on_method (message& msg);
+
+        bool has_method (const std::string& name) const;
+
+
 
         bool add_property (const std::string& name,
                            const std::string& signature,
-                           const bool readable,
+                           const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
+
         bool add_property (const std::string& name,
                            const dbus_type& initial_value,
-                           const bool readable,
+                           const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
+
         bool add_property (const std::string& name,
                            dbus_type&& initial_value,
-                           const bool readable,
+                           const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
+
         bool add_property (const std::string& name,
                            const std::string& signature,
                            get_property_cb_t get_callback,
                            set_property_cb_t set_callback=nullptr);
+
         void remove_property (const std::string& name, bool emit_signal=true);
 
         int get_property (const std::string& name, dbus_type& value) const;
+
         template<dbus_basic_cpp_types T>
         int get_property (const std::string& name, T& value) const {
             dbus_basic<T> v;
@@ -101,6 +200,40 @@ namespace ultrabus {
             return retval;
         }
 
+        /**
+         * Check if this interface instance has any properties.
+         * @return <code>true</code> if this interface
+         *         instance has one or more properties.
+         */
+        bool has_properties () const {return !properties.empty();}
+
+        /**
+         * Return a pointer to a <code>dbus_variant</code>
+         * conatining the value of the named interface property.
+         * @param name The name of the property we are interested in.
+         * @return A pointer to the <code>dbus_variant</code> containing
+         *         the property value. Or a <code>nullptr</code> if
+         *         no such property is found.
+         * @note If the property was created with callbacks getting
+         *       and setting the value, the actual <code>dbus_variant</code>
+         *       instance pointed to by the return value may not
+         *       be used at all by this interface instance.
+         */
+        dbus_variant* property (const std::string& name);
+        /**
+         * Return a pointer to a const <code>dbus_variant</code>
+         * conatining the value of the named interface property.
+         * @param name The name of the property we are interested in.
+         * @return A pointer to a const <code>dbus_variant</code>
+         *         containing the property value. Or a
+         *         <code>nullptr</code> if no such property is found.
+         * @note If the property was created with callbacks getting
+         *       and setting the value, the actual <code>dbus_variant</code>
+         *       instance pointed to by the return value may not
+         *       be used at all by this interface instance.
+         */
+        const dbus_variant* property (const std::string& name) const;
+
         int set_property (const std::string& name, const dbus_type& value, bool emit_if_changed=true);
         template<dbus_basic_cpp_types T>
         int set_property (const std::string& name, const T& value, bool emit_if_changed=true) {
@@ -109,7 +242,6 @@ namespace ultrabus {
 
         dbus_string_dict get_all_properties () const;
 
-        dbus_variant* property (const std::string& name);
 
         bool emit_property_changed (const std::string& property_name);
         bool emit_property_changed (const std::string& property_name, const dbus_type& value);
@@ -121,6 +253,7 @@ namespace ultrabus {
         bool emit_property_invalid (const std::string& property_name);
         bool emit_properties_changed (const std::vector<std::string>& property_names,
                                       const std::vector<std::string>& invalid_names={});
+
 
         bool add_signal (const std::string& name);
         // argument:  "[name:]signature"
@@ -146,8 +279,9 @@ namespace ultrabus {
             return emit_signal_impl (signal);
         }
 
-        object* owner () {return obj;}
+        object* owner () const {return obj;}
 
+        const std::string to_xml () const;
 
     protected:
         interface (const std::string& interface_name);
@@ -164,7 +298,7 @@ namespace ultrabus {
 
         struct property_t {
             dbus_variant value;
-            std::string sign;
+            std::string signature;
             get_property_cb_t get_cb;
             set_property_cb_t set_cb;
             bool readable;
@@ -182,6 +316,7 @@ namespace ultrabus {
         //       signal name            sig sign     arguments
         std::map<std::string, std::pair<std::string, std::vector<signal_arg_desc_t>>> signals;
 
+        bool on_method (message& msg);
         void set_owner (object* obj_arg) {obj = obj_arg;}
         bool add_property_impl (const std::string& name,
                                 const std::string& signature,
@@ -196,5 +331,5 @@ namespace ultrabus {
     };
 
 
-};
+} // namespace ultrabus
 #endif

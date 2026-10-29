@@ -52,24 +52,21 @@ namespace {
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     iface_only_props::iface_only_props ()
-        : comment {"No comment!"}
+        : comment {"No comment!"},
+          stop_tick_thread {true}
     {
         // Create the interface instance
         iface = ubus::interface::create (interface_name);
 
         // Add read-only property 'Name' to the interface
         // The property value is handled internally in the interface object
-        iface->add_property ("Name",                            // The name of the property
-                             ubus::dbus_string(interface_name), // The initial value of the property
-                             true,                              // The property is readable
-                             false);                            // The property is not writable
+        iface->add_property ("Name",                             // The name of the property
+                             ubus::dbus_string(interface_name)); // The initial value of the property
 
         // Add read-only property 'SomeData' to the interface
         // The property value is handled internally in the interface object
-        iface->add_property ("SomeData",                  // The name of the property
-                             ubus::dbus_array({1,2,3,4}), // The initial value of the property
-                             true,                        // The property is readable
-                             false);                      // The property is not writable
+        iface->add_property ("SomeData",                   // The name of the property
+                             ubus::dbus_array({1,2,3,4})); // The initial value of the property
 
         // Add read-write property 'Number' to the interface
         // The property value is handled internally in the interface object
@@ -262,11 +259,8 @@ int main ()
     std::cout << "To monitor property changed signals, run: 'dbus-tool listen -s "
               << bus_name << " /foo/bar'" << std::endl;
 
-    // Create a DBus object
-    ubus::object obj (conn,
-                      "/foo/bar", // The object path of the DBus object
-                      true,       // The object implements standard interface org.freedesktop.DBus.Introspectable
-                      true);      // The object implements standard interface org.freedesktop.DBus.Properties
+    // Create a DBus object at object path /foo/bar
+    ubus::object obj (conn, "/foo/bar");
 
     obj.add_interface (only_props.get_iface()); // Add our interface to the DBus object
     obj.enable ();                              // Enable the object

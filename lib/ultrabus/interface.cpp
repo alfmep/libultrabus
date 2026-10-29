@@ -51,6 +51,9 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     std::shared_ptr<interface> interface::create (const std::string& interface_name)
     {
+        if (dbus_validate_interface(interface_name.c_str(), nullptr) != TRUE)
+            return nullptr;
+
         std::shared_ptr<interface> iface (new interface(interface_name));
         return iface;
     }
@@ -69,61 +72,6 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     interface::~interface ()
     {
-    }
-
-    //--------------------------------------------------------------------------
-    //--------------------------------------------------------------------------
-    const std::string interface::to_xml () const
-    {
-        std::string xml;
-        xml.append (R"(<interface name=")");
-        xml.append (if_name);
-        xml.append (R"(">)");
-
-        // Append methods
-        for (const auto& entry : xml_methods)
-            xml.append (entry.second);
-
-        // Append signals
-        for (auto& entry : signals) {
-            auto& name = entry.first;
-            auto& arguments = entry.second.second;
-            xml.append (R"(<signal name=")");
-            xml.append (name);
-            xml.append (arguments.empty() ? R"("/>)" : R"(">)");
-            for (auto& arg : arguments) {
-                auto& name = arg.first;
-                auto& signature = arg.second;
-                xml.append (R"(<arg)");
-                if (!name.empty()) {
-                    xml.append (R"( name=")");
-                    xml.append (name);
-                    xml.push_back ('"');
-                }
-                xml.append (R"( type=")");
-                xml.append (signature);
-                xml.append (R"("/>)");
-            }
-            if ( ! arguments.empty())
-                xml.append ("</signal>");
-        }
-
-        // Append properties
-        for (auto& entry : properties) {
-            xml.append (R"(<property name=")");
-            xml.append (entry.first);
-            xml.append (R"(" type=")");
-            xml.append (entry.second.sign);
-            xml.append (R"(" access=")");
-            if (entry.second.readable)
-                xml.append ("read");
-            if (entry.second.writable)
-                xml.append ("write");
-            xml.append (R"("/>)");
-        }
-
-        xml.append ("</interface>");
-        return xml;
     }
 
 
@@ -242,6 +190,13 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    bool interface::has_method (const std::string& name) const
+    {
+        return methods.find(name) != methods.end();
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     bool interface::on_method (message& msg)
     {
         auto entry = methods.find (msg.name());
@@ -342,13 +297,13 @@ namespace ultrabus {
 
         property_t p;
         if (initial_value) {
-            p.sign = initial_value->signature ();
+            p.signature = initial_value->signature ();
             if (move_initial_value)
                 p.value = std::move (*initial_value);
             else
                 p.value = *initial_value;
         }else{
-            p.sign = signature;
+            p.signature = signature;
         }
         p.readable = readable;
         p.writable = writable;
@@ -358,7 +313,12 @@ namespace ultrabus {
         if (!get_callback && !set_callback)
             p.disable_emit_on_set_property = disable_emit_on_set_property;
 
+        bool enable_properties_interface = properties.empty ();
         properties.emplace (name, p);
+
+        if (enable_properties_interface && obj)
+            obj->enable_interface_properties ();
+
         return true;
     }
 
@@ -401,9 +361,9 @@ namespace ultrabus {
             return ok ? 0 : -4;
         }
 
-        if (p.sign=="v" && p.value.value_signature() != value.signature())
+        if (p.signature=="v" && p.value.value_signature() != value.signature())
             return -3;
-        else if (p.sign != value.signature())
+        else if (p.signature != value.signature())
             return -3;
 
         if (p.get_cb) {
@@ -433,12 +393,12 @@ namespace ultrabus {
         if (!p.writable)
             return -2; // Property is read-only
 
-        if (p.sign != "v") {
+        if (p.signature != "v") {
             if (value.is_variant()) {
-                if (value.cast<dbus_variant>().value_signature() != p.sign) {
+                if (value.cast<dbus_variant>().value_signature() != p.signature) {
                     return -3; // Setting a value of wrong type
                 }
-            }else if (value.signature() != p.sign){
+            }else if (value.signature() != p.signature){
                 return -3; // Setting a value of wrong type
             }
         }
@@ -496,13 +456,11 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::emit_property_changed (const std::string& property_name)
     {
-        if (!obj || !obj->is_enabled())
+        dbus_variant value;
+        if (get_property(property_name, value) == 0)
+            return emit_property_changed (property_name, value);
+        else
             return false;
-
-        auto i = properties.find (property_name);
-        if (i == properties.end())
-            return false;
-        return emit_property_changed (property_name, i->second.value);
     }
 
 
@@ -511,7 +469,7 @@ namespace ultrabus {
     bool interface::emit_property_changed (const std::string& property_name,
                                            const dbus_type& value)
     {
-        if (!obj || !obj->is_enabled())
+        if (!obj || !obj->is_enabled() || !obj->has_interface_properties())
             return false;
         if (property_name.empty()) // Sanity check
             return false;
@@ -541,7 +499,7 @@ namespace ultrabus {
     bool interface::emit_properties_changed (const std::vector<std::string>& property_names,
                                              const std::vector<std::string>& invalid_names)
     {
-        if (!obj || !obj->is_enabled())
+        if (!obj || !obj->is_enabled() || !obj->has_interface_properties())
             return false;
 
         dbus_string_dict props (DBUS_TYPE_VARIANT);
@@ -634,4 +592,62 @@ namespace ultrabus {
     }
 
 
-}
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    const std::string interface::to_xml () const
+    {
+        std::string xml;
+        xml.append (R"(<interface name=")");
+        xml.append (if_name);
+        xml.append (R"(">)");
+
+        // Append methods
+        for (const auto& entry : xml_methods)
+            xml.append (entry.second);
+
+        // Append signals
+        for (auto& entry : signals) {
+            auto& name = entry.first;
+            auto& arguments = entry.second.second;
+            xml.append (R"(<signal name=")");
+            xml.append (name);
+            xml.append (arguments.empty() ? R"("/>)" : R"(">)");
+            for (auto& arg : arguments) {
+                auto& name = arg.first;
+                auto& signature = arg.second;
+                xml.append (R"(<arg)");
+                if (!name.empty()) {
+                    xml.append (R"( name=")");
+                    xml.append (name);
+                    xml.push_back ('"');
+                }
+                xml.append (R"( type=")");
+                xml.append (signature);
+                xml.append (R"("/>)");
+            }
+            if ( ! arguments.empty())
+                xml.append ("</signal>");
+        }
+
+        // Append properties
+        if (!owner()  ||  owner()->has_interface_properties()) {
+            for (auto& entry : properties) {
+                xml.append (R"(<property name=")");
+                xml.append (entry.first);
+                xml.append (R"(" type=")");
+                xml.append (entry.second.signature);
+                xml.append (R"(" access=")");
+                if (entry.second.readable)
+                    xml.append ("read");
+                if (entry.second.writable)
+                    xml.append ("write");
+                xml.append (R"("/>)");
+            }
+        }
+
+        xml.append ("</interface>");
+        return xml;
+    }
+
+
+} // namespace ultrabus
