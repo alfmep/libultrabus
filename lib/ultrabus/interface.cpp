@@ -182,10 +182,15 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::remove_method (const std::string& name)
+    bool interface::remove_method (const std::string& name)
     {
-        methods.erase (name);
-        xml_methods.erase (name);
+        auto i = methods.find (name);
+        bool was_removed = i != methods.end ();
+        if (was_removed) {
+            methods.erase (i);
+            xml_methods.erase (name);
+        }
+        return was_removed;
     }
 
     //--------------------------------------------------------------------------
@@ -324,14 +329,16 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::remove_property (const std::string& name, bool emit_signal)
+    bool interface::remove_property (const std::string& name, bool emit_signal)
     {
         auto i = properties.find (name);
-        if (i != properties.end()) {
-            properties.erase (i);
-            if (emit_signal)
-                emit_property_invalid (name);
-        }
+        if (i == properties.end())
+            return false;
+
+        properties.erase (i);
+        if (emit_signal)
+            emit_property_invalid (name);
+        return true;
     }
 
     //--------------------------------------------------------------------------
@@ -567,9 +574,13 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    void interface::remove_signal (const std::string& name)
+    bool interface::remove_signal (const std::string& name)
     {
-        signals.erase (name);
+        auto i = signals.find (name);
+        bool was_removed = i != signals.end ();
+        if (was_removed)
+            signals.erase (i);
+        return was_removed;
     }
 
 

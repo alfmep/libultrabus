@@ -181,6 +181,8 @@ namespace ultrabus {
          *         in/out parameter description is invalid, or if
          *         <code>callback</code> is a <code>nullptr</code>
          * @see iface_method_cb_t A callback implementing the DBus method call.
+         * @see <a href=https://dbus.freedesktop.org/doc/dbus-specification.html#type-system
+         *       rel="noopener noreferrer" target="_blank">D-Bus Specification - Type System</a>
          */
         bool add_method (const std::string& name,
                          const std::string& in_param,
@@ -191,7 +193,7 @@ namespace ultrabus {
          * Add a DBus method to this interface that may take
          * one argument and may include a return value in the reply.
          * @param name The name of the DBus method we wish to add.
-         * @param in_param A vector of strings that describes all input
+         * @param in_params A vector of strings that describes all input
          *                 parameters to this method. If the vector is
          *                 empty, this method doesn't have an input
          *                 parameter.<br/>
@@ -232,6 +234,8 @@ namespace ultrabus {
          *         in/out parameter description is invalid, or if
          *         <code>callback</code> is a <code>nullptr</code>
          * @see iface_method_cb_t A callback implementing the DBus method call.
+         * @see <a href=https://dbus.freedesktop.org/doc/dbus-specification.html#type-system
+         *       rel="noopener noreferrer" target="_blank">D-Bus Specification - Type System</a>
          */
         bool add_method (const std::string& name,
                          const std::vector<std::string>& in_params,
@@ -239,15 +243,17 @@ namespace ultrabus {
                          iface_method_cb_t callback);
 
         /**
-         * Remove a method from this interface.
+         * Remove a DBus method from this interface.
          * @param name The name of the DBus method
          *             to remove from the interface.
+         * @return <code>true</code> if the method was removed.
+         *         <code>false</code> if no such method was found.
          */
-        void remove_method (const std::string& name);
+        bool remove_method (const std::string& name);
 
         /**
-         * Check if the interface has a specific method.
-         * @param The name of the DBus method.
+         * Check if the interface has a specific DBus method.
+         * @param name The name of the DBus method.
          * @return <code>true</code> if this interface has
          *         a DBus method with the given name.<br/>
          *         <code>false</code> if not.
@@ -255,34 +261,260 @@ namespace ultrabus {
         bool has_method (const std::string& name) const;
 
 
-
+        /**
+         * Add a DBus property to this interface.
+         * This adds a named property of a specific DBus data type to the
+         * interface. The property value can be read-write, read only,
+         * or write-only.<br/>
+         * The initial value of the property will be the default value
+         * of the precified DBus data type.<br/>
+         * The property value can be set using method <code>set_property()</code>,
+         * and be read using method <code>get_property()</code>. Or it
+         * can be directly modified by getting a pointer to the property
+         * value using method <code>property()</code>.<br/>
+         * When using method <code>set_property()</code> to update the
+         * value of the property, a
+         * <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal will automatically be emitted from the DBus object owning
+         * this interface.
+         * Note that if the property is read-only, using method
+         * <code>set_property()</code> to change the value will fail. To
+         * change the value of a read-only property, use method
+         * <code>property()</code> to get a pointer to the property value.
+         *
+         * The name, type, and access permission of the added property will
+         * be included in the introspect data returned by the DBus object
+         * owning this interface.
+         *
+         * @param name The name of the property to add.
+         * @param signature The DBus signature of the property data type.
+         * @param readable <code>true</code> if the property can be read,
+         *                 <code>false</code> if not.
+         * @param writable <code>true</code> if the property can be written,
+         *                 <code>false</code> if not.
+         * @param disable_emit_on_set_property Set this parameter to
+         *                 <code>true</code> if we, for some reason,
+         *                 don't want to automatically emit a
+         *                 <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                 signal when the value of the property is changed.
+         * @return <code>true</code> if successfully added.<br/>
+         *         <code>false</code> if a property with the same name is
+         *         already added, if the property name is an invalid DBus name,
+         *         if the signature isn't a valid DBus signature of a single
+         *         data type, if both <code>readable</code> and
+         *         <code>writable</code> are set to <code>false</code>.
+         * @see ultrabus::object::add_interface
+         */
         bool add_property (const std::string& name,
                            const std::string& signature,
                            const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
 
+        /**
+         * Add a DBus property to this interface.
+         * This adds a named property of a specific DBus data type to the
+         * interface. The property value can be read-write, read only,
+         * or write-only.<br/>
+         * The DBus data type and the initial value of the property is
+         * the same as the parameter <code>initial_value</code>.
+         * The property value can be set using method <code>set_property()</code>,
+         * and be read using method <code>get_property()</code>. Or it
+         * can be directly modified by getting a pointer to the property
+         * value using method <code>property()</code>.<br/>
+         * When using method <code>set_property()</code> to update the
+         * value of the property, a
+         * <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal will automatically be emitted from the DBus object owning
+         * this interface.
+         * Note that if the property is read-only, using method
+         * <code>set_property()</code> to change the value will fail. To
+         * change the value of a read-only property, use method
+         * <code>property()</code> to get a pointer to the property value.
+         *
+         * The name, type, and access permission of the added property will
+         * be included in the introspect data returned by the DBus object
+         * owning this interface.
+         *
+         * @param name The name of the property to add.
+         * @param initial_value The initial value of the new property.
+         * @param readable <code>true</code> if the property can be read,
+         *                 <code>false</code> if not.
+         * @param writable <code>true</code> if the property can be written,
+         *                 <code>false</code> if not.
+         * @param disable_emit_on_set_property Set this parameter to
+         *                 <code>true</code> if we, for some reason,
+         *                 don't want to automatically emit a
+         *                 <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                 signal when the value of the property is changed.
+         * @return <code>true</code> if successfully added.<br/>
+         *         <code>false</code> if a property with the same name is
+         *         already added, if the property name is an invalid DBus name,
+         *         if the signature isn't a valid DBus signature of a single
+         *         data type, if both <code>readable</code> and
+         *         <code>writable</code> are set to <code>false</code>.
+         * @see ultrabus::object::add_interface
+         */
         bool add_property (const std::string& name,
                            const dbus_type& initial_value,
                            const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
 
+        /**
+         * Add a DBus property to this interface.
+         * This adds a named property of a specific DBus data type to the
+         * interface. The property value can be read-write, read only,
+         * or write-only.<br/>
+         * The DBus data type and the initial value of the property is
+         * the same as the parameter <code>initial_value</code>.
+         * The property value can be set using method <code>set_property()</code>,
+         * and be read using method <code>get_property()</code>. Or it
+         * can be directly modified by getting a pointer to the property
+         * value using method <code>property()</code>.<br/>
+         * When using method <code>set_property()</code> to update the
+         * value of the property, a
+         * <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal will automatically be emitted from the DBus object owning
+         * this interface.
+         * Note that if the property is read-only, using method
+         * <code>set_property()</code> to change the value will fail. To
+         * change the value of a read-only property, use method
+         * <code>property()</code> to get a pointer to the property value.
+         *
+         * The name, type, and access permission of the added property will
+         * be included in the introspect data returned by the DBus object
+         * owning this interface.
+         *
+         * @param name The name of the property to add.
+         * @param initial_value The initial value of the new property.
+         * @param readable <code>true</code> if the property can be read,
+         *                 <code>false</code> if not.
+         * @param writable <code>true</code> if the property can be written,
+         *                 <code>false</code> if not.
+         * @param disable_emit_on_set_property Set this parameter to
+         *                 <code>true</code> if we, for some reason,
+         *                 don't want to automatically emit a
+         *                 <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                 signal when the value of the property is changed.
+         * @return <code>true</code> if successfully added.<br/>
+         *         <code>false</code> if a property with the same name is
+         *         already added, if the property name is an invalid DBus name,
+         *         if the signature isn't a valid DBus signature of a single
+         *         data type, if both <code>readable</code> and
+         *         <code>writable</code> are set to <code>false</code>.
+         * @see ultrabus::object::add_interface
+         */
         bool add_property (const std::string& name,
                            dbus_type&& initial_value,
                            const bool readable=true,
                            const bool writable=false,
                            const bool disable_emit_on_set_property=false);
 
+        /**
+         * Add a DBus property to this interface.
+         * This adds a named property of a specific DBus data type to the
+         * interface. The property value can be read-write, read only,
+         * or write-only.
+         *
+         * Setting and getting the value of this property is handled
+         * in the supplied callback funtions.
+         *
+         * Use this method to add a property when we want to have more
+         * control over what happens when the property value is read or
+         * written, for example when we want to have a dynamic property
+         * value that is determined at the time it is read.
+         *
+         * The property value can be set using method <code>set_property()</code>,
+         * and be read using method <code>get_property()</code>.
+         * Using <code>set_property()</code> and <code>get_property()</code>
+         * will trigger calls to the supplied callback functions for
+         * implementation specific handling of the property value.<br/>
+         *
+         * The name, type, and access permission of the added property will
+         * be included in the introspect data returned by the DBus object
+         * owning this interface.
+         * @note When using this method to add a property, the method
+         *       <code>property()</code> may return a pointer to a property
+         *       value that isn't used or updated at all, depending on the
+         *       implementation in the supplied callback functions.
+         * @note The property added this way will not trigger a
+         *       <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *       signal when the value is set using method <code>set_property()</code>.
+         *       It is the responsibility of the <code>set_callback</code>
+         *       function to emit this signal using
+         *       <code>emit_property_changed()</code> if needed.
+         *
+         * @param name The name of the property to add.
+         * @param signature The DBus signature of the property data type.
+         * @param get_callback A callback function that is called to read
+         *                     the value of the property. If this parameter
+         *                     is a <code>nullptr</code>, the value is not
+         *                     readable.
+         * @param set_callback A callback function that is called to write
+         *                     the value of the property. If this parameter
+         *                     is a <code>nullptr</code>, the value is not
+         *                     writeable.
+         * @return <code>true</code> if successfully added.<br/>
+         *         <code>false</code> if a property with the same name is
+         *         already added, if the property name is an invalid DBus name,
+         *         if the signature isn't a valid DBus signature of a single
+         *         data type, if both <code>get_callback</code> and
+         *         <code>get_callback</code> are <code>nullptr</code>.
+         * @see ultrabus::object::add_interface
+         */
         bool add_property (const std::string& name,
                            const std::string& signature,
                            get_property_cb_t get_callback,
                            set_property_cb_t set_callback=nullptr);
 
-        void remove_property (const std::string& name, bool emit_signal=true);
+        /**
+         * Remove a property from this interface.
+         * @param name The name of the property to remove.
+         * @param emit_signal Set this parameter to <code>false</code>
+         *                    if we, for some reason, don't want to emit a
+         *       <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                    signal when the property is removed.
+         * @return <code>true</code> if the property was removed.<br/>
+         *         <code>false</code> if this interface doesn't have
+         *         a property with this name.
+         */
+        bool remove_property (const std::string& name, bool emit_signal=true);
 
+        /**
+         * Get the value of a property.
+         * @param name The name of the property.
+         * @param value If the property is successfully read,
+         *              this parameter will contain the current
+         *              value of the property.
+         * @return One of:
+         *         -  0 The property value was successfully read.
+         *         - -1 Property not found.
+         *         - -2 The property is write-only.
+         *         - -3 The property isn't of the same DBus
+         *              data type as parameter <code>value</code>.
+         *         - -4 Error getting the property value (the
+         *              <code>get_callback</code> callback
+         *              function returned <code>false</code>).
+         */
         int get_property (const std::string& name, dbus_type& value) const;
 
+        /**
+         * Get the value of a property.
+         * @param name The name of the property.
+         * @param value If the property is successfully read,
+         *              this parameter will contain the current
+         *              value of the property.
+         * @return One of:
+         *         -  0 The property value was successfully read.
+         *         - -1 Property not found.
+         *         - -2 The property is write-only.
+         *         - -3 The property isn't of the same DBus
+         *              data type as parameter <code>value</code>.
+         *         - -4 Error getting the property value (the
+         *              <code>get_callback</code> callback
+         *              function returned <code>false</code>).
+         */
         template<dbus_basic_cpp_types T>
         int get_property (const std::string& name, T& value) const {
             dbus_basic<T> v;
@@ -291,6 +523,58 @@ namespace ultrabus {
                 value = v.get ();
             return retval;
         }
+
+        /**
+         * Set the value of a property.
+         * @param name The name of the property.
+         * @param value The new value of the property.
+         * @param emit_if_changed Set this parameter to <code>false</code>
+         *                        if we, for some reason, don't want to emit a
+         *         <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                        signal if the value is changed.
+         * @return One of:
+         *         -  0 The property value was successfully set.
+         *         - -1 Property not found.
+         *         - -2 The property is read-only.
+         *         - -3 The property isn't of the same DBus
+         *              data type as parameter <code>value</code>.
+         *         - -4 Error setting the property value (the
+         *              <code>set_callback</code> callback
+         *              function returned <code>false</code>).
+         */
+        int set_property (const std::string& name, const dbus_type& value, bool emit_if_changed=true);
+
+        /**
+         * Set the value of a property.
+         * @param name The name of the property.
+         * @param value The new value of the property.
+         * @param emit_if_changed Set this parameter to <code>false</code>
+         *                        if we, for some reason, don't want to emit a
+         *         <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         *                        signal if the value is changed.
+         * @return One of:
+         *         -  0 The property value was successfully set.
+         *         - -1 Property not found.
+         *         - -2 The property is read-only.
+         *         - -3 The property isn't of the same DBus
+         *              data type as parameter <code>value</code>.
+         *         - -4 Error setting the property value (the
+         *              <code>set_callback</code> callback
+         *              function returned <code>false</code>).
+         */
+        template<dbus_basic_cpp_types T>
+        int set_property (const std::string& name, const T& value, bool emit_if_changed=true) {
+            return set_property (name, dbus_basic<T>(value), emit_if_changed);
+        }
+
+        /**
+         * Get all properties of this interface as a DBus dict.
+         * @return A DBus dict containing all properties of this
+         *         interface with the current values.
+         * @note Properties that are write-only will not be included
+         *       in the returned dict.
+         */
+        dbus_string_dict get_all_properties () const;
 
         /**
          * Check if this interface instance has any properties.
@@ -326,35 +610,194 @@ namespace ultrabus {
          */
         const dbus_variant* property (const std::string& name) const;
 
-        int set_property (const std::string& name, const dbus_type& value, bool emit_if_changed=true);
-        template<dbus_basic_cpp_types T>
-        int set_property (const std::string& name, const T& value, bool emit_if_changed=true) {
-            return set_property (name, dbus_basic<T>(value), emit_if_changed);
-        }
-
-        dbus_string_dict get_all_properties () const;
-
-
+        /**
+         * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal containing the named property with its current value.
+         * This will read the current value of the named property and
+         * send a <code>PropertiesChanged</code> signal including that
+         * property.
+         * @param property_name The name of the property that will be
+         *                      included in the DBus signal.
+         * @return <code>true</code> if a signal was successfully sent.<br>
+         *         <code>false</code> if the property couldn't be read or
+         *         a signal couldn't be sent.
+         */
         bool emit_property_changed (const std::string& property_name);
+
+        /**
+         * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal containing a property name and value.
+         * @note This method will sent a signal containing the property name and
+         *       value regardless if this interface has a property with that
+         *       name or not, and regardless of the actual type and value of
+         *       the property if this interface has such a property.
+         * @param property_name The name of the property that will be
+         *                      included in the DBus signal.
+         * @param value The value of the property in the signal we are
+         *              sending.
+         * @return <code>true</code> if a signal was successfully sent.<br>
+         *         <code>false</code> if a signal couldn't be sent.
+         */
         bool emit_property_changed (const std::string& property_name, const dbus_type& value);
+
+        /**
+         * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal containing a property name and value.
+         * @note This method will sent a signal containing the property name and
+         *       value regardless if this interface has a property with that
+         *       name or not, and regardless of the actual type and value of
+         *       the property if this interface has such a property.
+         * @param property_name The name of the property that will be
+         *                      included in the DBus signal.
+         * @param value The value of the property in the signal we are
+         *              sending.
+         * @return <code>true</code> if a signal was successfully sent.<br>
+         *         <code>false</code> if a signal couldn't be sent.
+         */
         template<dbus_basic_cpp_types T>
         bool emit_property_changed (const std::string& property_name, const T& value) {
             return emit_property_changed (property_name, dbus_basic<T>(value));
         }
 
+        /**
+         * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal containing a property name that is included in the
+         * <code>invalidated_properties</code> argument of the signal.
+         * @note This method will sent a signal containing the property name
+         *       regardless if this interface has a property with that
+         *       name or not.
+         * @param property_name The name of the property that will
+         *                      be marked as invalid in the signal.
+         * @return <code>true</code> if a signal was successfully sent.<br>
+         *         <code>false</code> if a signal couldn't be sent.
+         */
         bool emit_property_invalid (const std::string& property_name);
+
+        /**
+         * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
+         * signal containing changed and/or invalid properties.
+         * This will read the current values of the properties in
+         * the <code>property_names</code> parameter and
+         * send a <code>PropertiesChanged</code> signal including
+         * those properties. And optionally include a list of
+         * invalid property names in the signal
+         * @param property_names A vector containing the names of the properties
+         *                       we want to include in the
+         *                       <code>changed_properties</code>
+         *                       argument in the signal.
+         * @param invalid_names A vector containing the names of the properties
+         *                       we want to include in the
+         *                       <code>invalidated_properties</code>
+         *                       argument in the signal.
+         */
         bool emit_properties_changed (const std::vector<std::string>& property_names,
                                       const std::vector<std::string>& invalid_names={});
 
 
+        /**
+         * Add a signal that can be emitted from this interface.
+         * This adds a signal without arguments that can be sent
+         * from the interface.
+         * @param name The name of the signal.
+         * @return <code>true</code> if the signal was successfully added.<br>
+         *         <code>false</code> if a signal with the same name was
+         *         already added or if the name is an invalid DBus signal name.
+         */
         bool add_signal (const std::string& name);
-        // argument:  "[name:]signature"
+
+        /**
+         * Add a signal that can be emitted from this interface.
+         * This adds a signal with one argument that can be sent
+         * from the interface.
+         * @param name The name of the signal.
+         * @param argument A string describing the argument in the signal.
+         *                 This description can be in one of
+         *                 three forms:
+         *                 <ul>
+         *                   <li>"" (an empty string)</li>
+         *                   <li>"signature"</li>
+         *                   <li>"name:signature"</li>
+         *                 </ul>
+         *                 The first form, an empty string, means that
+         *                 the signal doesn't have an argument.<br/>
+         *                 The second form is a DBus signature of a single
+         *                 DBus data type.<br/>
+         *                 The third form is a descriptive name of the
+         *                 argument, followed by a colon(:), followed by
+         *                 a DBus signature of a single DBus data type.<br/>
+         *                 When using the third form, the XML output from
+         *                 a call to
+         *                 <code>org.freedesktop.DBus.Introspectable.Introspect</code>
+         *                 will include the name given to the argument,
+         *                 making the introspect data a bit more descriptive.
+         *                 Note that the argument name must be a valid DBus
+         *                 member name.
+         * @return <code>true</code> if the signal was successfully added.<br>
+         *         <code>false</code> if a signal with the same name was
+         *         already added, if the name is an invalid DBus signal name,
+         *         or if the signature isn't a valid signature of a single
+         *         DBus data type.
+         */
         bool add_signal (const std::string& name, const std::string& argument);
-        // argument:  "[name:]signature"
+
+        /**
+         * Add a signal that can be emitted from this interface.
+         * This adds a signal with multiple arguments that can
+         * be sent from the interface.
+         * @param name The name of the signal.
+         * @param arguments A vector of strings describing all arguments
+         *                 in the signal.<br/>
+         *                 Each string in the vector is a description of
+         *                 a aignal argument. This description can be
+         *                 in one of three forms:
+         *                 <ul>
+         *                   <li>"" (an empty string)</li>
+         *                   <li>"signature"</li>
+         *                   <li>"name:signature"</li>
+         *                 </ul>
+         *                 The first form, an empty string, is simply
+         *                 ignored, not counted as a signal argument.<br/>
+         *                 The second form is a DBus signature of a single
+         *                 DBus data type.<br/>
+         *                 The third form is a descriptive name of the
+         *                 argument, followed by a colon(:), followed by
+         *                 a DBus signature of a single DBus data type.<br/>
+         *                 When using the third form, the XML output from
+         *                 a call to
+         *                 <code>org.freedesktop.DBus.Introspectable.Introspect</code>
+         *                 will include the name given to the argument,
+         *                 making the introspect data a bit more descriptive.
+         *                 Note that the argument name must be a valid DBus
+         *                 member name.
+         * @return <code>true</code> if the signal was successfully added.<br>
+         *         <code>false</code> if a signal with the same name was
+         *         already added, if the name is an invalid DBus signal name,
+         *         or if an argument signature isn't a valid signature of a
+         *         single DBus data type.
+         */
         bool add_signal (const std::string& name, const std::vector<std::string>& arguments);
-        void remove_signal (const std::string& name);
 
+        /**
+         * Remove a signal from the set of signals that can
+         * be sent from this interface.
+         * @param name The name of the signal to remove.
+         * @return <code>true</code> if the signal was removed.
+         *         <code>false</code> if no such signal was found.
+         */
+        bool remove_signal (const std::string& name);
 
+        /**
+         * Send a DBus signal from this interface.
+         * This will send a DBus signal from the object owning this
+         * interface.
+         * @param name The name of the signal to send.
+         * @return <code>true</code> if the signal was sent.<br/>
+         *         <code>false</code> if a signal with this name
+         *         hasn't been added to this interface, of if
+         *         the registered signal has different arguments,
+         *         or if no enabled object owns this interface
+         *         instance.
+         */
         bool emit_signal (const std::string& name) {
             if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
                 return false;
@@ -362,6 +805,20 @@ namespace ultrabus {
             return emit_signal_impl (signal);
         }
 
+        /**
+         * Send a DBus signal from this interface.
+         * This will send a DBus signal from the object owning this
+         * interface.
+         * @param name The name of the signal to send.
+         * @param arg The first argument in the signal.
+         * @param args Optionally more arguments in the signal.
+         * @return <code>true</code> if the signal was sent.<br/>
+         *         <code>false</code> if a signal with this name
+         *         hasn't been added to this interface, of if
+         *         the registered signal has different arguments,
+         *         or if no enabled object owns this interface
+         *         instance.
+         */
         template<typename T, typename... Targs>
         bool emit_signal (const std::string& name, const T& arg, const Targs&... args) {
             if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
@@ -371,11 +828,26 @@ namespace ultrabus {
             return emit_signal_impl (signal);
         }
 
+        /**
+         * Return a pointer to the DBus object owning this interface instance.
+         * @return A pointer to a DBus object, or a <code>nullptr</code>
+         *         if this interface instance isn't added to a DBus object
+         *         instance.
+         */
         object* owner () const {return obj;}
 
+        /**
+         * Return XML introspect data describing this interface.
+         * @return A string containing XML introspect data.
+         */
         const std::string to_xml () const;
 
+
     protected:
+        /**
+         * Protected constructor.
+         * Instances of this class is created using method create().
+         */
         interface (const std::string& interface_name);
 
 

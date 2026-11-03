@@ -126,7 +126,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     object::object (connection& conn,
-                    const std::string& object_path,
+                    const dbus_opath& object_path,
                     const bool enable_interface_objectmanager,
                     const bool enable_interface_introspectable)
         : object_handler(conn),
@@ -137,8 +137,6 @@ namespace ultrabus {
           implements_introspectable {enable_interface_introspectable},
           enabled {false}
     {
-        if (dbus_validate_path(object_path.c_str(), nullptr) != TRUE)
-            throw std::invalid_argument ("Invalid object path");
     }
 
 

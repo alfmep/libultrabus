@@ -273,7 +273,7 @@ int main ()
 
     // Access a property value in our interface
     //
-    uint32_t number;
+    uint32_t number {};
     only_props.get_iface()->get_property ("Tick", number);
     std::cout << "Final value of 'Tick': " << number << std::endl;
 
