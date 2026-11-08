@@ -119,6 +119,15 @@ namespace ultrabus {
          */
         void disconnect ();
 
+
+        /**
+         * Get the unique name of this connection.
+         * @return Returns the unique name of this connection,
+         *         of an empty string if not connected.
+         */
+        std::string unique_name ();
+
+
         /**
          * Send a message on the bus and wait for a reply.
          * @param msg The DBus message to send.
@@ -128,6 +137,9 @@ namespace ultrabus {
          *         timeout.
          */
         message send_and_wait (message& msg, int timeout=DBUS_TIMEOUT_USE_DEFAULT);
+        message send_and_wait (message&& msg, int timeout=DBUS_TIMEOUT_USE_DEFAULT) {
+            return send_and_wait (msg, timeout);
+        }
 
         /**
          * Send a message on the bus.
@@ -152,6 +164,7 @@ namespace ultrabus {
          *         <code>false</code> if the message couldn't be queued for sending.
          */
         bool send (message& msg) {uint32_t s; return send(msg, s);}
+        bool send (message&& msg) {uint32_t s; return send(msg, s);}
 
         /**
          * Send a message on the bus without waiting for a message reply.
@@ -162,6 +175,7 @@ namespace ultrabus {
          *         <code>false</code> if the message couldn't be queued for sending.
          */
         bool send (message& msg, uint32_t& serial);
+        bool send (message&& msg, uint32_t& serial) {return send (msg, serial);}
 
         /**
          * Request a name DBus connection name.
@@ -727,6 +741,15 @@ namespace ultrabus {
          *       rel="noopener noreferrer" target="_blank">D-Bus Specification - Message Bus Messages: GetId</a>
          */
         retvalue<std::string> get_id (int timeout=DBUS_TIMEOUT_USE_DEFAULT);
+
+
+        /**
+         * Return the id of the server we are connected to.
+         * @return The ID of the server we are connected to.
+         *         Or an empty string if not connected.
+         */
+        std::string get_server_id ();
+
 
         /**
          * Asynchronous call to get the unique ID of the bus.

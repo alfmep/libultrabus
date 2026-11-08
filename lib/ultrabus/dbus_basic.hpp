@@ -594,10 +594,18 @@ namespace ultrabus {
         }
 
         /**
-         * Convert to the stored C++ value.
-         * @return A copy of the stored value.
+         * Convert to a reference to the stored C++ value.
+         * @return A reference to the stored value.
          */
-        constexpr operator value_type() const {
+        constexpr operator value_type& () {
+            return basic_value;
+        }
+
+        /**
+         * Convert to a const reference to the stored C++ value.
+         * @return A reference to the stored value.
+         */
+        constexpr operator const value_type& () const {
             return basic_value;
         }
 

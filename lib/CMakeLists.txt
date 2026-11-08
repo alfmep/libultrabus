@@ -40,6 +40,12 @@ target_include_directories (ultrabus
     $<INSTALL_INTERFACE:include>
 )
 
+if (CMAKE_BUILD_TYPE MATCHES "^[Dd]ebug")
+    target_compile_options (ultrabus PRIVATE "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+elseif (CMAKE_BUILD_TYPE MATCHES "^[Mm]em[Dd]ebug")
+    target_compile_options (ultrabus PRIVATE "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wextra>>")
+endif()
+
 # Set link libraries
 #
 target_link_libraries (ultrabus
@@ -80,6 +86,8 @@ target_sources (ultrabus PRIVATE
     ultrabus/object_proxy.cpp
     ultrabus/object_handler.cpp
     ultrabus/callback_object_handler.cpp
+    ultrabus/object.cpp
+    ultrabus/interface.cpp
     ultrabus/utils.cpp
     ultrabus/org_freedesktop_DBus_Peer.cpp
     ultrabus/org_freedesktop_DBus_Introspectable.cpp
@@ -113,6 +121,8 @@ set (PUBLIC_HEADER_FILES
     ultrabus/object_proxy.hpp
     ultrabus/object_handler.hpp
     ultrabus/callback_object_handler.hpp
+    ultrabus/object.hpp
+    ultrabus/interface.hpp
     ultrabus/utils.hpp
     ultrabus/org_freedesktop_DBus_Peer.hpp
     ultrabus/org_freedesktop_DBus_Introspectable.hpp

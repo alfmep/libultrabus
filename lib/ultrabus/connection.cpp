@@ -527,6 +527,17 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    std::string connection::unique_name ()
+    {
+        const char* tmp_name {};
+        if (is_connected())
+            tmp_name = dbus_bus_get_unique_name (ctx);
+        return tmp_name==nullptr ? "" : std::string(tmp_name);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     bool connection::send (message& msg,
                            std::function<void (ultrabus::message&)> reply_cb,
                            int timeout)
@@ -572,7 +583,7 @@ namespace ultrabus {
         if ( ! is_connected()) {
             if (msg.serial() == 0)
                 dbus_message_set_serial (msg.handle(), 1);
-            return msg.make_reply (true, DBUS_ERROR_DISCONNECTED, "Not connected");
+            return msg.make_reply (DBUS_ERROR_DISCONNECTED, "Not connected");
         }
 
         message reply;
@@ -590,7 +601,7 @@ namespace ultrabus {
         if (!is_sent) {
             if (msg.serial() == 0)
                 dbus_message_set_serial (msg.handle(), 1);
-            return msg.make_reply (true, DBUS_ERROR_FAILED, "Error sending DBus message");
+            return msg.make_reply (DBUS_ERROR_FAILED, "Error sending DBus message");
         }
         while (!got_reply) {
             std::unique_lock lock (cond_mutex);
@@ -1033,6 +1044,23 @@ namespace ultrabus {
                          callback (retval);
                      },
                      timeout);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    std::string connection::get_server_id ()
+    {
+        std::string server_id;
+        if (is_connected()) {
+            char* tmp_id {};
+            tmp_id = dbus_connection_get_server_id (ctx);
+            if (tmp_id) {
+                server_id = tmp_id;
+                free (tmp_id);
+            }
+        }
+        return server_id;
     }
 
 

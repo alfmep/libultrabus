@@ -42,10 +42,13 @@ namespace ultrabus {
          * Copy contructor.
          * @param other Value to copy.
          */
-        constexpr dbus_opath (const dbus_opath& other) {
+        constexpr dbus_opath (const dbus_opath& other)
+            : dbus_basic<std::string>(other)
+        {
             sig = make_signature ();
             basic_value = other.basic_value;
         }
+
         /**
          * Move contructor.
          * @param other Value to move.

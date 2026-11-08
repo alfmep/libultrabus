@@ -382,7 +382,7 @@ namespace ultrabus {
          *
          */
         template<any_dbus_or_basic_cpp_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args (T& arg, Targs&... args) {
+        bool get_args (T& arg, Targs&... args) const {
             DBusMessageIter iter;
             if (!ctx || !dbus_message_iter_init(ctx, &iter))
                 return false;
@@ -433,7 +433,7 @@ namespace ultrabus {
          * @see get_args()
          */
         template<any_dbus_or_basic_cpp_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_strict (T& arg, Targs&... args) {
+        bool get_args_strict (T& arg, Targs&... args) const {
             DBusMessageIter iter;
             if (!ctx || !dbus_message_iter_init(ctx, &iter))
                 return false;
@@ -451,16 +451,32 @@ namespace ultrabus {
         std::vector<std::unique_ptr<dbus_type>> arguments (size_t max_args=0) const;
 
         /**
-         * Create and return a reply message.
-         * @param set_error Set to <code>true</code> if this is an error response.
-         * @param error_name The error name when <code>set_error</code> is true.
-         * @param error_message The error description.
+         * Create a success reply to a method call message.
+         * @return A reply message indicating a successful method call.
+         * @throws std::invalid_argument if this message has no serial number.
+         * @throws std::bad_alloc if libdbus cannot allocate the reply.
+         */
+        message make_reply () const {return make_reply("","");}
+
+        /**
+         * Create a reply to a method call message.
+         * This method can create both success replies and error replies.
+         * If argument <code>error_name</code> is empty, then it will create
+         * a success reply. And if argument <code>error_name</code> is not
+         * empty, then an error reply will be created.<br/>
+         * Note that even if argument <code>error_message</code> is not an
+         * empty string, a success reply will still be created if argument
+         * <code>error_name</code> is an empty string.
+         * @param error_name Optional error name. An empty string will
+         *                   create a success reply. A non-empty string
+         *                   will create an error reply.
+         * @param error_message Error description used if error_name is
+         *                      not an empty string.
          * @return A reply message.
          * @throws std::invalid_argument if this message has no serial number.
          * @throws std::bad_alloc if libdbus cannot allocate the reply.
          */
-        message make_reply (const bool set_error,
-                            const std::string& error_name="",
+        message make_reply (const std::string& error_name,
                             const std::string& error_message="") const;
 
         /**
@@ -496,7 +512,7 @@ namespace ultrabus {
         DBusMessage* ctx;
 
         void append_dbus_type_arg (DBusMessageIter* iter, const dbus_type& arg);
-        inline void append_args_impl (DBusMessageIter* iter) {}
+        inline void append_args_impl (DBusMessageIter*) {}
 
         template<typename... Targs>
         void append_args_impl (DBusMessageIter* iter, const dbus_type& arg, const Targs&... args) {
@@ -560,10 +576,10 @@ namespace ultrabus {
 
 
 
-        inline bool get_args_impl (DBusMessageIter* iter, bool strict_signature) {return true;}
+        inline bool get_args_impl (DBusMessageIter*, bool) const {return true;}
 
         template<any_dbus_type T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) {
+        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) const {
             auto next_arg = get_next_message_argument (iter);
             if (!next_arg)
                 return false;
@@ -587,7 +603,7 @@ namespace ultrabus {
         }
 
         template<dbus_basic_cpp_types T, any_dbus_or_basic_cpp_type... Targs>
-        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) {
+        bool get_args_impl (DBusMessageIter* iter, bool strict_signature, T& arg, Targs&... more_args) const {
             if (!get_next_message_argument(iter, arg))
                 return false;
             dbus_message_iter_next (iter);

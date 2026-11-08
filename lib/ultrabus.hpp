@@ -40,6 +40,8 @@ namespace ultrabus {
 #include <ultrabus/object_proxy.hpp>
 #include <ultrabus/object_handler.hpp>
 #include <ultrabus/callback_object_handler.hpp>
+#include <ultrabus/object.hpp>
+#include <ultrabus/interface.hpp>
 #include <ultrabus/utils.hpp>
 #include <ultrabus/org_freedesktop_DBus_Peer.hpp>
 #include <ultrabus/org_freedesktop_DBus_Introspectable.hpp>
