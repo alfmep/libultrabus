@@ -165,15 +165,16 @@ namespace ultrabus {
             added_ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
         if (implements_properties)
             added_ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
-        if (implements_objectmanager)
+        if (implements_objectmanager) {
+            std::lock_guard lock (interfaces_mutex);
             added_ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
-        for (auto& if_entry : interfaces) {
-            if (implements_properties)
-                added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-            else
-                added_ifaces.set (if_entry.first, dbus_string_dict("v"));
+            for (auto& if_entry : interfaces) {
+                if (implements_properties)
+                    added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+                else
+                    added_ifaces.set (if_entry.first, dbus_string_dict("v"));
+            }
         }
-
         message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
         signal.append_args (opath, added_ifaces);
         conn.send (signal);
@@ -188,6 +189,8 @@ namespace ultrabus {
             disable ();
             return false;
         }
+
+        std::lock_guard lock (node_mutex);
 
         if ( ! enabled) {
             enabled = register_object_path (opath.get(), nullptr);
@@ -222,9 +225,11 @@ namespace ultrabus {
             removed_ifaces.push_back ("org.freedesktop.DBus.Properties");
         if (has_interface_objectmanager())
             removed_ifaces.push_back ("org.freedesktop.DBus.ObjectManager");
-        for (const auto& if_entry : interfaces)
-            removed_ifaces.push_back (if_entry.first);
-
+        {
+            std::lock_guard lock (interfaces_mutex);
+            for (const auto& if_entry : interfaces)
+                removed_ifaces.push_back (if_entry.first);
+        }
         message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved");
         signal.append_args (opath, removed_ifaces);
         conn.send (signal);
@@ -235,6 +240,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void object::disable ()
     {
+        std::lock_guard lock (node_mutex);
+
         for (auto& node : nodes)
             node.second->disable ();
 
@@ -254,6 +261,8 @@ namespace ultrabus {
             const bool enable_interface_objectmanager,
             const bool enable_interface_introspectable)
     {
+        std::lock_guard lock (node_mutex);
+
         std::string relative_path = get_relative_path (opath, node_path);
         if (relative_path.empty()) {
             return nullptr;
@@ -283,6 +292,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::remove_node (const std::string& node_path)
     {
+        std::lock_guard lock (node_mutex);
+
         std::string relative_path = get_relative_path (opath, node_path);
         if (relative_path.empty())
             return false;
@@ -342,6 +353,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::add_interface (std::shared_ptr<interface> iface)
     {
+        std::lock_guard lock (interfaces_mutex);
+
         if (!iface || interfaces.contains(iface->name()) || iface->owner()!=nullptr)
             return false;
 
@@ -379,13 +392,13 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::remove_interface (const std::string& interface_name)
     {
+        std::lock_guard lock (interfaces_mutex);
         auto entry = interfaces.find (interface_name);
         if (entry == interfaces.end())
             return false;
 
-        auto iface = entry->second;
+        entry->second->set_owner (nullptr);
         interfaces.erase (entry);
-        iface->set_owner (nullptr);
 
         if (enabled && conn.is_connected())
             emit_interface_removed (interface_name);
@@ -408,33 +421,58 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    bool object::on_method_call (message& msg)
+    bool object::on_method_call_without_interface_in_msg (message& msg)
     {
         static std::set<std::string> if_properties_method_names {{"Get", "GetAll", "Set"}};
         bool handled {false};
 
-        if (msg.interface().empty()) {
-            // No interface specified
-            // Check standard interfaces
-            if (!handled) {
-                if (implements_introspectable  &&  msg.name() == "Introspect")
-                    handled = on_introspect_method (msg);
-                else if (implements_properties  &&  if_properties_method_names.contains(msg.name()))
-                    handled = on_properties_method (msg);
-                else if (implements_objectmanager  &&  msg.name() == "GetManagedObjects")
-                    handled = on_objectmanager_method (msg);
-            }
-            // No interface specified
-            // Check registered interfaces
-            if (!handled) {
-                for (auto& iface : interfaces) {
-                    if (iface.second->has_method(msg.name())) {
-                        handled = iface.second->on_method (msg);
-                        break;
-                    }
+        // Check standard interfaces
+        if (implements_introspectable  &&  msg.name() == "Introspect")
+            handled = on_introspect_method (msg);
+        else if (implements_properties  &&  if_properties_method_names.contains(msg.name()))
+            handled = on_properties_method (msg);
+        else if (implements_objectmanager  &&  msg.name() == "GetManagedObjects")
+            handled = on_objectmanager_method (msg);
+
+        // Check registered interfaces
+        if (!handled) {
+            std::unique_lock lock (interfaces_mutex);
+            for (auto& entry : interfaces) {
+                if (entry.second->has_method(msg.name())) {
+                    auto iface = entry.second;
+                    lock.unlock ();
+                    handled = iface->on_method (msg);
+                    break;
                 }
             }
-        }else{
+        }
+        return handled;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool object::on_method_call (message& msg)
+    {
+        bool handled {false};
+
+        if (msg.interface().empty()) {
+            // No interface specified in the method call
+            return on_method_call_without_interface_in_msg (msg);
+        }
+
+        // Check registered interfaces
+        {
+            std::unique_lock lock (interfaces_mutex);
+            auto entry = interfaces.find (msg.interface());
+            if (entry != interfaces.end()) {
+                auto iface = entry->second;
+                lock.unlock ();
+                handled = iface->on_method (msg);
+            }
+        }
+
+        if (!handled) {
             // Check standard interfaces
             if (implements_introspectable  &&  msg.interface() == "org.freedesktop.DBus.Introspectable")
                 handled = on_introspect_method (msg);
@@ -442,14 +480,6 @@ namespace ultrabus {
                 handled = on_properties_method (msg);
             else if (implements_objectmanager  &&  msg.interface() == "org.freedesktop.DBus.ObjectManager")
                 handled = on_objectmanager_method (msg);
-
-            // Check registered interfaces
-            //
-            if (!handled) {
-                auto entry = interfaces.find (msg.interface());
-                if (entry != interfaces.end())
-                    handled = entry->second->on_method (msg);
-            }
         }
         return handled;
     }
@@ -473,16 +503,22 @@ namespace ultrabus {
             xml.append (xml_objectmanager_interface);
 
         // Add interfaces info
-        for (const auto& entry : interfaces)
-            xml.append (entry.second->to_xml());
+        {
+            std::lock_guard lock (interfaces_mutex);
+            for (const auto& entry : interfaces)
+                xml.append (entry.second->to_xml());
+        }
 
         // Add nodes info
         std::set<std::string> node_names;
-        for (const auto& node : nodes) {
-            if ( ! node.second->is_enabled())
-                continue;
-            auto& full_name = node.first;
-            node_names.emplace (full_name.substr(0, full_name.find_first_of('/')));
+        {
+            std::lock_guard lock (node_mutex);
+            for (const auto& node : nodes) {
+                if ( ! node.second->is_enabled())
+                    continue;
+                auto& full_name = node.first;
+                node_names.emplace (full_name.substr(0, full_name.find_first_of('/')));
+            }
         }
         for (const auto& node_name : node_names) {
             xml.append (R"(<node name=")");
@@ -502,26 +538,27 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::on_properties_get_set_method (message& msg, bool get_value)
     {
-        dbus_string iface;
+        dbus_string iface_name;
         dbus_string prop_name;
         dbus_variant value;
+        message reply;
 
         if (get_value) {
-            if ( ! msg.get_args_strict(iface, prop_name))
+            if ( ! msg.get_args_strict(iface_name, prop_name))
                 return false;
         }else{
-            if ( ! msg.get_args_strict(iface, prop_name, value))
+            if ( ! msg.get_args_strict(iface_name, prop_name, value))
                 return false;
         }
 
-        auto entry = interfaces.find (iface);
+        std::lock_guard lock (interfaces_mutex);
+        auto entry = interfaces.find (iface_name);
         if (entry == interfaces.end()) {
-            message reply (msg, true, DBUS_ERROR_FAILED, "Get/Set property error - no such interface");
+            reply = msg.make_reply (DBUS_ERROR_FAILED, "Get/Set property error - no such interface");
             conn.send (reply);
             return true;
         }
 
-        message reply;
         int result {};
         if (get_value)
             result = entry->second->get_property (prop_name, value);
@@ -531,7 +568,8 @@ namespace ultrabus {
         switch (result) {
         case 0:
             reply = msg.make_reply ();
-            reply.append_args (value);
+            if (get_value)
+                reply.append_args (value);
             break;
         case -1:
             reply = msg.make_reply (DBUS_ERROR_UNKNOWN_PROPERTY, "No such property");
@@ -570,6 +608,8 @@ namespace ultrabus {
         if ( ! msg.get_args_strict(iface))
             return false;
 
+        std::lock_guard lock (interfaces_mutex);
+
         auto entry = interfaces.find (iface);
         if (entry == interfaces.end()) {
             message reply (msg, true, DBUS_ERROR_FAILED, "Get/Set property error - no such interface");
@@ -605,6 +645,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool object::on_objectmanager_method (message& msg)
     {
+        std::lock_guard lock (node_mutex);
+
         if ( ! implements_objectmanager  ||  msg.name() != "GetManagedObjects")
             return false;
 
@@ -633,17 +675,24 @@ namespace ultrabus {
             ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
         if (implements_objectmanager)
             ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
-        for (auto& if_entry : interfaces) {
-            if (implements_properties)
-                ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-            else
-                ifaces.set (if_entry.first, dbus_string_dict("v"));
+
+        {
+            std::lock_guard lock (interfaces_mutex);
+            for (auto& if_entry : interfaces) {
+                if (implements_properties)
+                    ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+                else
+                    ifaces.set (if_entry.first, dbus_string_dict("v"));
+            }
         }
         dict.set (opath, ifaces);
 
-        for (auto& entry : nodes) {
-            if (entry.second->is_enabled())
-                entry.second->get_all_objects_ifaces_properties (dict);
+        {
+            std::lock_guard lock (node_mutex);
+            for (auto& entry : nodes) {
+                if (entry.second->is_enabled())
+                    entry.second->get_all_objects_ifaces_properties (dict);
+            }
         }
     }
 

@@ -26,6 +26,7 @@
 #include <ultrabus/dbus_dict.hpp>
 #include <string>
 #include <memory>
+#include <mutex>
 #include <functional>
 #include <tuple>
 #include <map>
@@ -581,7 +582,16 @@ namespace ultrabus {
          * @return <code>true</code> if this interface
          *         instance has one or more properties.
          */
-        bool has_properties () const {return !properties.empty();}
+        bool has_properties () const;
+
+        /**
+         * Check if this interface instance has a property
+         * with a given name.
+         * @param name The name of the property we are interested in.
+         * @return <code>true</code> if this interface
+         *         instance has a property with the given name.
+         */
+        bool has_property (const std::string name) const;
 
         /**
          * Return a pointer to a <code>dbus_variant</code>
@@ -609,6 +619,42 @@ namespace ultrabus {
          *       be used at all by this interface instance.
          */
         const dbus_variant* property (const std::string& name) const;
+
+        /**
+         * Return a pointer to a <code>dbus_variant</code>
+         * conatining the value of the named interface property.
+         * @note This method doesn't lock the mutex protecting
+         *       the set of properties in this class.<br/>
+         *       This method is only intended to be called from
+         *       withing a callback that gets of sets a property value.
+         * @param name The name of the property we are interested in.
+         * @return A pointer to the <code>dbus_variant</code> containing
+         *         the property value. Or a <code>nullptr</code> if
+         *         no such property is found.
+         * @note If the property was created with callbacks getting
+         *       and setting the value, the actual <code>dbus_variant</code>
+         *       instance pointed to by the return value may not
+         *       be used at all by this interface instance.
+         */
+        dbus_variant* property_nolock (const std::string& name);
+
+        /**
+         * Return a pointer to a const <code>dbus_variant</code>
+         * conatining the value of the named interface property.
+         * @note This method doesn't lock the mutex protecting
+         *       the set of properties in this class.<br/>
+         *       This method is only intended to be called from
+         *       withing a callback that gets of sets a property value.
+         * @param name The name of the property we are interested in.
+         * @return A pointer to a const <code>dbus_variant</code>
+         *         containing the property value. Or a
+         *         <code>nullptr</code> if no such property is found.
+         * @note If the property was created with callbacks getting
+         *       and setting the value, the actual <code>dbus_variant</code>
+         *       instance pointed to by the return value may not
+         *       be used at all by this interface instance.
+         */
+        const dbus_variant* property_nolock (const std::string& name) const;
 
         /**
          * Emit a <em><code>org.freedesktop.DBus.Properties.PropertiesChanged</code></em>
@@ -787,6 +833,15 @@ namespace ultrabus {
         bool remove_signal (const std::string& name);
 
         /**
+         * Check if the interface can emit a specific signal.
+         * @param name The name of the DBus signal.
+         * @return <code>true</code> if this interface can emit
+         *         a DBus signal with the given name.<br/>
+         *         <code>false</code> if not.
+         */
+        bool has_signal (const std::string& name) const;
+
+        /**
          * Send a DBus signal from this interface.
          * This will send a DBus signal from the object owning this
          * interface.
@@ -795,10 +850,11 @@ namespace ultrabus {
          *         <code>false</code> if a signal with this name
          *         hasn't been added to this interface, of if
          *         the registered signal has different arguments,
-         *         or if no enabled object owns this interface
-         *         instance.
+         *         or if this interface instance isn't added to
+         *         an object that is currently enabled.
          */
         bool emit_signal (const std::string& name) {
+            std::scoped_lock lock (obj_mutex, signals_mutex);
             if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
                 return false;
             message signal (obj->path(), if_name, name);
@@ -821,6 +877,7 @@ namespace ultrabus {
          */
         template<typename T, typename... Targs>
         bool emit_signal (const std::string& name, const T& arg, const Targs&... args) {
+            std::scoped_lock lock (obj_mutex, signals_mutex);
             if (!obj || dbus_validate_member(name.c_str(), nullptr) != TRUE)
                 return false;
             message signal (obj->path(), if_name, name);
@@ -834,7 +891,7 @@ namespace ultrabus {
          *         if this interface instance isn't added to a DBus object
          *         instance.
          */
-        object* owner () const {return obj;}
+        object* owner () const;
 
         /**
          * Return XML introspect data describing this interface.
@@ -854,8 +911,8 @@ namespace ultrabus {
     private:
         friend class object;
 
-        //                               in_sign      out_sign     callback
-        using method_desc_t = std::tuple<std::string, std::string, iface_method_cb_t>;
+        //                               in_sign      out_sign     callback           introspect-XML
+        using method_desc_t = std::tuple<std::string, std::string, iface_method_cb_t, std::string>;
 
         //                                  name         signature
         using signal_arg_desc_t = std::pair<std::string, std::string>;
@@ -874,14 +931,19 @@ namespace ultrabus {
         std::string if_name; // The name of this interface
         object* obj;         // Object implementing this interface
         std::map<std::string, method_desc_t> methods;
-        std::map<std::string, std::string> xml_methods;
         std::map<std::string, property_t> properties;
 
         //       signal name            sig sign     arguments
         std::map<std::string, std::pair<std::string, std::vector<signal_arg_desc_t>>> signals;
 
+        mutable std::mutex obj_mutex;
+        mutable std::mutex methods_mutex;
+        mutable std::mutex properties_mutex;
+        mutable std::mutex signals_mutex;
+
+        int get_property_impl (const std::string& name, dbus_type& value) const;
         bool on_method (message& msg);
-        void set_owner (object* obj_arg) {obj = obj_arg;}
+        void set_owner (object* obj_arg);
         bool add_property_impl (const std::string& name,
                                 const std::string& signature,
                                 const dbus_type* initial_value,

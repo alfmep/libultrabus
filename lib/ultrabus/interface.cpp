@@ -111,6 +111,10 @@ namespace ultrabus {
             return false;
         }
 
+        std::lock_guard lock (methods_mutex);
+        if (methods.contains(name))
+            return false; // Method already added
+
         std::string out_name;
         std::string out_signature;
         if ( ! out_param.empty()) {
@@ -118,12 +122,12 @@ namespace ultrabus {
             out_name = std::move (name_sign.first);
             out_signature = std::move (name_sign.second);
             if (out_name.empty()==false && dbus_validate_member(out_name.c_str(), nullptr) != TRUE) {
-                return false;
+                return false; // Invalid output parameter name
             }
             if (out_signature.empty()==false &&
                 dbus_signature_validate_single(out_signature.c_str(), nullptr) != TRUE)
             {
-                return false;
+                return false; // Invalid output parameter signature
             }
         }
 
@@ -140,10 +144,10 @@ namespace ultrabus {
             auto& param_name = name_sign.first;
             auto& param_signature = name_sign.second;
             if (param_name.empty()==false && dbus_validate_member(param_name.c_str(), nullptr) != TRUE) {
-                return false;
+                return false; // Invalid parameter name
             }
             if (param_signature.empty() || dbus_signature_validate_single(param_signature.c_str(), nullptr) != TRUE) {
-                return false;
+                return false; // Invalid parameter signature
             }
             in_signature.append (param_signature);
 
@@ -175,8 +179,7 @@ namespace ultrabus {
         if (!out_signature.empty() || !in_params.empty())
             xml.append ("</method>");
 
-        methods.emplace (name, std::make_tuple(in_signature, out_signature, callback));
-        xml_methods.emplace (name, xml);
+        methods.emplace (name, std::make_tuple(in_signature, out_signature, callback, xml));
         return true;
     }
 
@@ -184,38 +187,46 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::remove_method (const std::string& name)
     {
+        bool retval = false;
+        std::lock_guard lock (methods_mutex);
         auto i = methods.find (name);
-        bool was_removed = i != methods.end ();
-        if (was_removed) {
+        if (i != methods.end()) {
             methods.erase (i);
-            xml_methods.erase (name);
+            retval = true;
         }
-        return was_removed;
+        return retval;
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     bool interface::has_method (const std::string& name) const
     {
-        return methods.find(name) != methods.end();
+        std::lock_guard lock (methods_mutex);
+        return methods.contains (name);
     }
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     bool interface::on_method (message& msg)
     {
+        std::lock (methods_mutex, obj_mutex);
+        std::unique_lock methods_lock (methods_mutex, std::adopt_lock);
+        std::unique_lock obj_lock (obj_mutex, std::adopt_lock);
+
         auto entry = methods.find (msg.name());
         if (entry == methods.end() || !obj)
             return false;
-        const auto& in_signature = std::get<0> (entry->second);
-        //const auto& out_signature = std::get<1> (entry->second);
-        //const auto& method = std::get<2> (entry->second);
 
+        const auto& in_signature = std::get<0> (entry->second);
         if (in_signature != msg.signature())
             return false;
 
-        std::get<2>(entry->second) (obj->get_connection(), msg);
-        // method (msg);
+        auto method = std::get<2> (entry->second);
+        auto& conn = obj->get_connection ();
+        obj_lock.unlock ();
+        methods_lock.unlock ();
+
+        method (conn, msg);
         return true;
     }
 
@@ -287,6 +298,8 @@ namespace ultrabus {
                                        set_property_cb_t set_callback,
                                        const bool disable_emit_on_set_property)
     {
+        std::unique_lock properties_lock (properties_mutex);
+
         if (name.empty() || dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
         }
@@ -320,9 +333,13 @@ namespace ultrabus {
 
         bool enable_properties_interface = properties.empty ();
         properties.emplace (name, p);
+        properties_lock.unlock ();
 
-        if (enable_properties_interface && obj)
-            obj->enable_interface_properties ();
+        {
+            std::lock_guard lock (obj_mutex);
+            if (enable_properties_interface && obj)
+                obj->enable_interface_properties ();
+        }
 
         return true;
     }
@@ -331,13 +348,22 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::remove_property (const std::string& name, bool emit_signal)
     {
+        std::scoped_lock lock (properties_mutex, obj_mutex);
+
         auto i = properties.find (name);
         if (i == properties.end())
             return false;
 
         properties.erase (i);
-        if (emit_signal)
-            emit_property_invalid (name);
+
+        if (emit_signal && obj && obj->is_enabled() && obj->has_interface_properties()) {
+            dbus_string_dict props (DBUS_TYPE_VARIANT);
+            dbus_array invalid_props (DBUS_TYPE_STRING);
+            invalid_props.push_back (name);
+            message sig (obj->path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
+            sig.append_args (if_name, std::move(props), std::move(invalid_props));
+            obj->get_connection().send (sig);
+        }
         return true;
     }
 
@@ -349,6 +375,15 @@ namespace ultrabus {
     // -4: Error getting property value
     //--------------------------------------------------------------------------
     int interface::get_property (const std::string& name, dbus_type& value) const
+    {
+        std::lock_guard lock (properties_mutex);
+        return get_property_impl (name, value);
+    }
+
+    //--------------------------------------------------------------------------
+    // properties_mutex is locked !
+    //--------------------------------------------------------------------------
+    int interface::get_property_impl (const std::string& name, dbus_type& value) const
     {
         auto i = properties.find (name);
         if (i == properties.end())
@@ -376,7 +411,8 @@ namespace ultrabus {
         if (p.get_cb) {
             dbus_variant v;
             ok = p.get_cb (name, v);
-            value = v.get();
+            if (ok)
+                value = v.get ();
         }else{
             value = p.value.get ();
         }
@@ -392,6 +428,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     int interface::set_property (const std::string& name, const dbus_type& value, bool emit_if_changed)
     {
+        std::lock_guard lock (properties_mutex);
+
         auto i = properties.find (name);
         if (i == properties.end())
             return -1;
@@ -428,6 +466,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     dbus_string_dict interface::get_all_properties () const
     {
+        std::lock_guard lock (properties_mutex);
+
         dbus_string_dict props (DBUS_TYPE_VARIANT);
         for (auto& entry : properties) {
             const auto& name = entry.first;
@@ -447,9 +487,58 @@ namespace ultrabus {
         return props;
     }
 
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::has_properties () const
+    {
+        std::lock_guard lock (properties_mutex);
+        return ! properties.empty();
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::has_property (const std::string name) const
+    {
+        std::lock_guard lock (properties_mutex);
+        return properties.contains (name);
+    }
+
+
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     dbus_variant* interface::property (const std::string& name)
+    {
+        std::lock_guard lock (properties_mutex);
+        return property_nolock (name);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    const dbus_variant* interface::property (const std::string& name) const
+    {
+        std::lock_guard lock (properties_mutex);
+        return property_nolock (name);
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    dbus_variant* interface::property_nolock (const std::string& name)
+    {
+        auto i = properties.find (name);
+        if (i == properties.end())
+            return nullptr;
+        else
+            return &i->second.value;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    const dbus_variant* interface::property_nolock (const std::string& name) const
     {
         auto i = properties.find (name);
         if (i == properties.end())
@@ -476,6 +565,8 @@ namespace ultrabus {
     bool interface::emit_property_changed (const std::string& property_name,
                                            const dbus_type& value)
     {
+        std::lock_guard lock (obj_mutex);
+
         if (!obj || !obj->is_enabled() || !obj->has_interface_properties())
             return false;
         if (property_name.empty()) // Sanity check
@@ -495,9 +586,19 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::emit_property_invalid (const std::string& property_name)
     {
-        std::vector<std::string> changed_properties;
-        std::vector<std::string> invalid_names {property_name};
-        return emit_properties_changed (changed_properties, invalid_names);
+        std::lock_guard lock (obj_mutex);
+
+        if (property_name.empty() || !obj || !obj->is_enabled() || !obj->has_interface_properties())
+            return false;
+
+        dbus_string_dict props (DBUS_TYPE_VARIANT);
+        dbus_array invalid_props (DBUS_TYPE_STRING);
+
+        invalid_props.push_back (property_name);
+
+        message sig (obj->path(), "org.freedesktop.DBus.Properties", "PropertiesChanged");
+        sig.append_args (if_name, std::move(props), std::move(invalid_props));
+        return obj->get_connection().send (sig);
     }
 
 
@@ -506,6 +607,8 @@ namespace ultrabus {
     bool interface::emit_properties_changed (const std::vector<std::string>& property_names,
                                              const std::vector<std::string>& invalid_names)
     {
+        std::scoped_lock lock (properties_mutex, obj_mutex);
+
         if (!obj || !obj->is_enabled() || !obj->has_interface_properties())
             return false;
 
@@ -515,11 +618,13 @@ namespace ultrabus {
 
         for (auto& property_name : property_names) {
             dbus_variant value;
-            if (get_property(property_name, value))
+            if (get_property_impl(property_name, value))
                 props.set (property_name, std::move(value));
         }
-        for (auto& invalid_name : invalid_names)
-            invalid_props.push_back (invalid_name);
+        for (auto& invalid_name : invalid_names) {
+            if (!invalid_name.empty())
+                invalid_props.push_back (invalid_name);
+        }
 
         if (props.empty() && invalid_props.empty())
             return false;
@@ -550,9 +655,14 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::add_signal (const std::string& name, const std::vector<std::string>& arguments)
     {
+        std::lock_guard lock (signals_mutex);
+
         if (dbus_validate_member(name.c_str(), nullptr) != TRUE) {
             return false;
         }
+        if (signals.contains(name))
+            return false;
+
         std::string signal_signature;
         std::vector<signal_arg_desc_t> signal_args;
         for (auto arg : arguments) {
@@ -576,15 +686,27 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     bool interface::remove_signal (const std::string& name)
     {
+        bool retval = false;
+        std::lock_guard lock (signals_mutex);
         auto i = signals.find (name);
-        bool was_removed = i != signals.end ();
-        if (was_removed)
+        if (i != signals.end()) {
             signals.erase (i);
-        return was_removed;
+            retval = true;
+        }
+        return retval;
+    }
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    bool interface::has_signal (const std::string& name) const
+    {
+        std::lock_guard lock (signals_mutex);
+        return signals.contains (name);
     }
 
 
     //--------------------------------------------------------------------------
+    // obj_mutex and signals_mutex are locked !
     //--------------------------------------------------------------------------
     bool interface::emit_signal_impl (message signal)
     {
@@ -605,16 +727,35 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
+    object* interface::owner () const {
+        std::lock_guard lock (obj_mutex);
+        return obj;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    void interface::set_owner (object* obj_arg)
+    {
+        std::lock_guard lock (obj_mutex);
+        obj = obj_arg;
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
     const std::string interface::to_xml () const
     {
+        std::scoped_lock lock (methods_mutex, signals_mutex, properties_mutex);
+
         std::string xml;
         xml.append (R"(<interface name=")");
         xml.append (if_name);
         xml.append (R"(">)");
 
         // Append methods
-        for (const auto& entry : xml_methods)
-            xml.append (entry.second);
+        for (const auto& entry : methods)
+            xml.append (std::get<3>(entry.second));
 
         // Append signals
         for (auto& entry : signals) {

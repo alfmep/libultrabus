@@ -25,6 +25,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <mutex>
 #include <map>
 
 
@@ -257,6 +258,7 @@ namespace ultrabus {
 
 
     private:
+        bool on_method_call_without_interface_in_msg (message& msg);
         void emit_all_interfaces_added ();
         void emit_all_interfaces_removed ();
         void emit_interface_added (interface* iface);
@@ -274,6 +276,8 @@ namespace ultrabus {
         object* parent_obj;
         std::map<std::string, std::shared_ptr<object>> nodes;
         std::map<std::string, std::shared_ptr<interface>> interfaces;
+        std::mutex node_mutex;
+        std::mutex interfaces_mutex;
         bool implements_properties;
         bool implements_objectmanager;
         bool implements_introspectable;
