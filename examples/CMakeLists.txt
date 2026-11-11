@@ -57,6 +57,15 @@ target_include_directories (dbus-service-with-multiple-objects PRIVATE
 target_link_libraries (dbus-service-with-multiple-objects PRIVATE ultrabus)
 
 
+add_executable (gatt-peripheral)
+target_sources (gatt-peripheral PRIVATE gatt-peripheral.cpp)
+target_include_directories (gatt-peripheral PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib
+    ${CMAKE_BINARY_DIR}/lib
+)
+target_link_libraries (gatt-peripheral PRIVATE ultrabus)
+
+
 # add_executable (APP_NAME)
 # target_sources (APP_NAME PRIVATE APP_NAME.cpp)
 # target_include_directories (APP_NAME PRIVATE
