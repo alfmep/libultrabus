@@ -264,6 +264,7 @@ namespace ultrabus {
         void emit_interface_added (interface* iface);
         void emit_interface_added (const std::string& interface_name);
         void emit_interface_removed (const std::string& iface_name);
+        void enable_interface_properties_impl ();
 
         bool on_introspect_method (message& msg);
         bool on_properties_get_set_method (message& msg, bool get_value);

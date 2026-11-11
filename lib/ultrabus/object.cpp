@@ -153,6 +153,7 @@ namespace ultrabus {
 
 
     //--------------------------------------------------------------------------
+    // interfaces_mutex and node_mutex are locked !
     //--------------------------------------------------------------------------
     void object::emit_all_interfaces_added ()
     {
@@ -165,16 +166,16 @@ namespace ultrabus {
             added_ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
         if (implements_properties)
             added_ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
-        if (implements_objectmanager) {
-            std::lock_guard lock (interfaces_mutex);
+        if (implements_objectmanager)
             added_ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
-            for (auto& if_entry : interfaces) {
-                if (implements_properties)
-                    added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-                else
-                    added_ifaces.set (if_entry.first, dbus_string_dict("v"));
-            }
+
+        for (auto& if_entry : interfaces) {
+            if (implements_properties)
+                added_ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+            else
+                added_ifaces.set (if_entry.first, dbus_string_dict("v"));
         }
+
         message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded");
         signal.append_args (opath, added_ifaces);
         conn.send (signal);
@@ -190,7 +191,7 @@ namespace ultrabus {
             return false;
         }
 
-        std::lock_guard lock (node_mutex);
+        std::scoped_lock lock (interfaces_mutex, node_mutex);
 
         if ( ! enabled) {
             enabled = register_object_path (opath.get(), nullptr);
@@ -211,6 +212,7 @@ namespace ultrabus {
 
 
     //--------------------------------------------------------------------------
+    // interfaces_mutex and node_mutex are locked !
     //--------------------------------------------------------------------------
     void object::emit_all_interfaces_removed ()
     {
@@ -225,11 +227,10 @@ namespace ultrabus {
             removed_ifaces.push_back ("org.freedesktop.DBus.Properties");
         if (has_interface_objectmanager())
             removed_ifaces.push_back ("org.freedesktop.DBus.ObjectManager");
-        {
-            std::lock_guard lock (interfaces_mutex);
-            for (const auto& if_entry : interfaces)
-                removed_ifaces.push_back (if_entry.first);
-        }
+
+        for (const auto& if_entry : interfaces)
+            removed_ifaces.push_back (if_entry.first);
+
         message signal (obj_with_om->opath, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved");
         signal.append_args (opath, removed_ifaces);
         conn.send (signal);
@@ -240,7 +241,7 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void object::disable ()
     {
-        std::lock_guard lock (node_mutex);
+        std::scoped_lock lock (interfaces_mutex, node_mutex);
 
         for (auto& node : nodes)
             node.second->disable ();
@@ -362,7 +363,7 @@ namespace ultrabus {
         interfaces.emplace (iface->name(), iface);
 
         if (iface->has_properties())
-            enable_interface_properties ();
+            enable_interface_properties_impl ();
 
         if (enabled && conn.is_connected())
             emit_interface_added (iface.get());
@@ -410,6 +411,16 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     void object::enable_interface_properties ()
+    {
+        std::lock_guard lock (interfaces_mutex);
+        enable_interface_properties_impl ();
+    }
+
+
+    //--------------------------------------------------------------------------
+    // interfaces_mutex is locked
+    //--------------------------------------------------------------------------
+    void object::enable_interface_properties_impl ()
     {
         if ( ! implements_properties) {
             implements_properties = true;
@@ -668,6 +679,8 @@ namespace ultrabus {
     //--------------------------------------------------------------------------
     void object::get_all_objects_ifaces_properties (dbus_opath_dict& dict)
     {
+        std::scoped_lock lock (interfaces_mutex, node_mutex);
+
         dbus_string_dict ifaces ("a{sv}");
         if (implements_introspectable)
             ifaces.set ("org.freedesktop.DBus.Introspectable", dbus_string_dict("v"));
@@ -675,24 +688,17 @@ namespace ultrabus {
             ifaces.set ("org.freedesktop.DBus.Properties", dbus_string_dict("v"));
         if (implements_objectmanager)
             ifaces.set ("org.freedesktop.DBus.ObjectManager", dbus_string_dict("v"));
-
-        {
-            std::lock_guard lock (interfaces_mutex);
-            for (auto& if_entry : interfaces) {
-                if (implements_properties)
-                    ifaces.set (if_entry.first, if_entry.second->get_all_properties());
-                else
-                    ifaces.set (if_entry.first, dbus_string_dict("v"));
-            }
+        for (auto& if_entry : interfaces) {
+            if (implements_properties)
+                ifaces.set (if_entry.first, if_entry.second->get_all_properties());
+            else
+                ifaces.set (if_entry.first, dbus_string_dict("v"));
         }
         dict.set (opath, ifaces);
 
-        {
-            std::lock_guard lock (node_mutex);
-            for (auto& entry : nodes) {
-                if (entry.second->is_enabled())
-                    entry.second->get_all_objects_ifaces_properties (dict);
-            }
+        for (auto& entry : nodes) {
+            if (entry.second->is_enabled())
+                entry.second->get_all_objects_ifaces_properties (dict);
         }
     }
 
