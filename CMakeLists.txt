@@ -22,7 +22,7 @@ cmake_minimum_required (VERSION 3.25)
 # Project name and info
 #
 project (libultrabus
-    VERSION 1.1.0
+    VERSION 1.1.1
     LANGUAGES CXX
     DESCRIPTION "A C++ library for making DBus applications."
 )
