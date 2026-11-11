@@ -544,6 +544,7 @@ namespace ultrabus {
          *              function returned <code>false</code>).
          */
         int set_property (const std::string& name, const dbus_type& value, bool emit_if_changed=true);
+        int set_property (const std::string& name, dbus_type&& value, bool emit_if_changed=true);
 
         /**
          * Set the value of a property.
@@ -566,6 +567,10 @@ namespace ultrabus {
         template<dbus_basic_cpp_types T>
         int set_property (const std::string& name, const T& value, bool emit_if_changed=true) {
             return set_property (name, dbus_basic<T>(value), emit_if_changed);
+        }
+        template<dbus_basic_cpp_types T>
+        int set_property (const std::string& name, T&& value, bool emit_if_changed=true) {
+            return set_property (name, dbus_basic<T>(std::forward<T>(value)), emit_if_changed);
         }
 
         /**

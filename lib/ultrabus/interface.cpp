@@ -463,6 +463,49 @@ namespace ultrabus {
     }
 
     //--------------------------------------------------------------------------
+    //  0: Success
+    // -1: Property not found
+    // -2: Property is read-only
+    // -3: Wrong value type
+    // -4: Error setting property value
+    //--------------------------------------------------------------------------
+    int interface::set_property (const std::string& name, dbus_type&& value, bool emit_if_changed)
+    {
+        std::lock_guard lock (properties_mutex);
+
+        auto i = properties.find (name);
+        if (i == properties.end())
+            return -1;
+
+        auto& p = i->second;
+        if (!p.writable)
+            return -2; // Property is read-only
+
+        if (p.signature != "v") {
+            if (value.is_variant()) {
+                if (value.cast<dbus_variant>().value_signature() != p.signature) {
+                    return -3; // Setting a value of wrong type
+                }
+            }else if (value.signature() != p.signature){
+                return -3; // Setting a value of wrong type
+            }
+        }
+
+        bool ok {true};
+        if (p.set_cb) {
+            ok = p.set_cb (name, value);
+        }else if (emit_if_changed && !p.disable_emit_on_set_property) {
+            if (p.value != value) {
+                p.value = std::forward<dbus_type> (value);
+                emit_property_changed (name, p.value);
+            }
+        }else{
+            p.value = std::forward<dbus_type> (value);
+        }
+        return ok ? 0 : -4;
+    }
+
+    //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
     dbus_string_dict interface::get_all_properties () const
     {
