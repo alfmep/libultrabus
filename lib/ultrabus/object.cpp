@@ -21,7 +21,6 @@
 #include <ultrabus/dbus_array.hpp>
 #include <cstring>
 
-
 namespace {
 
     // XML header for introspect data
@@ -257,7 +256,7 @@ namespace ultrabus {
 
     //--------------------------------------------------------------------------
     //--------------------------------------------------------------------------
-    std::shared_ptr<ultrabus::object> object::create_node (
+    std::shared_ptr<object> object::create_node (
             const std::string& node_path,
             const bool enable_interface_objectmanager,
             const bool enable_interface_introspectable)
@@ -700,6 +699,53 @@ namespace ultrabus {
             if (entry.second->is_enabled())
                 entry.second->get_all_objects_ifaces_properties (dict);
         }
+    }
+
+
+    //--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    std::shared_ptr<object> object::find (const std::string& node_path) const
+    {
+        std::lock_guard lock (node_mutex);
+
+        std::string relative_path = get_relative_path (opath, node_path);
+        if (relative_path.empty())
+            return nullptr;
+        std::string absolute_path (opath);
+        if (opath.get().back() != '/')
+            absolute_path.push_back ('/');
+        absolute_path.append (relative_path);
+
+        if (dbus_validate_path(absolute_path.c_str(), nullptr) != TRUE)
+            return nullptr;
+
+        auto i = nodes.find (relative_path);
+        if (i != nodes.end())
+            return i->second;
+
+        std::string sub_path = relative_path;
+        bool done = false;
+        while (!done) {
+            auto pos = sub_path.find_last_of ("/");
+            if (pos == std::string::npos) {
+                if (sub_path.empty())
+                    break;
+                done = true;
+            }else{
+                sub_path = sub_path.substr (0, pos);
+                if (sub_path.empty())
+                    break;
+            }
+
+            auto i = nodes.find (sub_path);
+            if (i == nodes.end())
+                continue;
+
+            auto node = i->second->find (absolute_path);
+            if (node)
+                return node;
+        }
+        return nullptr;
     }
 
 

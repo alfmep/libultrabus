@@ -252,6 +252,15 @@ namespace ultrabus {
          */
         const object* parent () const {return parent_obj;}
 
+        /**
+         * Try to find an object that may be somewhere down in the object tree.
+         * @param path An absolute or relative path to the
+         *             DBus object we are searching for.
+         * @return A pointer to the object we found, or
+         *         a <code>nullptr</code> if none was found.
+         */
+        std::shared_ptr<object> find (const std::string& path) const;
+
 
     protected:
         virtual bool on_method_call (message& msg);
@@ -277,7 +286,7 @@ namespace ultrabus {
         object* parent_obj;
         std::map<std::string, std::shared_ptr<object>> nodes;
         std::map<std::string, std::shared_ptr<interface>> interfaces;
-        std::mutex node_mutex;
+        mutable std::mutex node_mutex;
         std::mutex interfaces_mutex;
         bool implements_properties;
         bool implements_objectmanager;
